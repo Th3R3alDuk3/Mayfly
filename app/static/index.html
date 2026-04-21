@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d0d; color: #e0e0e0; font-family: system-ui, sans-serif; }
+
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 20px;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #333;
+      border-top-color: #888;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #status-text { font-size: 14px; color: #888; }
+    #error-box {
+      display: none;
+      background: #1e0a0a;
+      border: 1px solid #5c1a1a;
+      border-radius: 6px;
+      padding: 16px 24px;
+      color: #f08080;
+      font-size: 14px;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    #frame-wrap {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+    }
+    iframe {
+      display: block;
+      width: 100%; height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <span id="status-text">Starting OpenCode…</span>
+    <div id="error-box"></div>
+  </div>
+  <div id="frame-wrap">
+    <iframe id="frame" src="" allow="clipboard-read; clipboard-write"></iframe>
+  </div>
+
+  <script>
+    const statusText = document.getElementById('status-text');
+    const errorBox = document.getElementById('error-box');
+    const loading = document.getElementById('loading');
+    const frameWrap = document.getElementById('frame-wrap');
+    const frame = document.getElementById('frame');
+
+    function showError(msg) {
+      statusText.textContent = 'Failed to start OpenCode.';
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
+      document.querySelector('.spinner').style.display = 'none';
+    }
+
+    async function start() {
+      let res;
+      try {
+        res = await fetch('/session', { method: 'POST' });
+      } catch {
+        showError('Server nicht erreichbar.');
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showError(data.detail ?? `Fehler ${res.status}`);
+        return;
+      }
+
+      const { token, url } = await res.json();
+
+      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${wsProto}://${location.host}/session/${token}/lifecycle`);
+      ws.onclose = () => console.info('Lifecycle WS closed — container will stop');
+
+      frame.src = url;
+      loading.style.display = 'none';
+      frameWrap.style.display = 'block';
+    }
+
+    start();
+  </script>
+</body>
+</html>
