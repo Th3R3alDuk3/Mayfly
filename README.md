@@ -1,4 +1,4 @@
-# Airport
+# Mayfly
 
 FastAPI-Dienst, der pro Browser-Session einen `opencode-plane`-Container startet.
 Der Client greift direkt per iframe auf OpenCode Web zu.
