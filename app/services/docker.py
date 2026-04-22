@@ -1,47 +1,37 @@
-import asyncio
-import logging
-import time
-import urllib.request
-from dataclasses import dataclass
-
+from asyncio import to_thread
+from http.client import HTTPResponse
+from logging import getLogger
+from time import monotonic, sleep
+from urllib.request import urlopen
+from docker import from_env
 from docker.errors import APIError, ImageNotFound, NotFound
 
-import docker
 from app.config import Settings
+from app.models.docker import ContainerInfo
 
-log = logging.getLogger(__name__)
+
+logger = getLogger(__name__)
+
 
 _HEALTH_TIMEOUT = 60
-_HEALTH_POLL = 2
+_HEALTH_POLL = 3
 
 
-@dataclass
-class ContainerInfo:
-    container_id: str
-    host_port: int
-
-
-def _wait_ready(host_port: int) -> None:
+def _wait_ready(host_port: int) -> HTTPResponse:
     url = f"http://localhost:{host_port}/"
-    deadline = time.monotonic() + _HEALTH_TIMEOUT
-    while time.monotonic() < deadline:
+    deadline = monotonic() + _HEALTH_TIMEOUT
+    while monotonic() < deadline:
         try:
-            urllib.request.urlopen(url, timeout=2)  # noqa: S310
-            return
+            return urlopen(url, timeout=3)
         except Exception:
-            time.sleep(_HEALTH_POLL)
+            sleep(_HEALTH_POLL)
     raise TimeoutError(f"OpenCode not ready on port {host_port} after {_HEALTH_TIMEOUT}s")
 
 
 async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
-    def _start() -> ContainerInfo:
-        client = docker.from_env()
-        env: dict[str, str] = {
-            "OLLAMA_BASE_URL": settings.ollama_base_url,
-            "OLLAMA_MODEL": settings.ollama_model,
-            "OPENCODE_PORT": str(settings.opencode_port),
-        }
 
+    def _start() -> ContainerInfo:
+        client = from_env()
         try:
             container = client.containers.run(
                 settings.opencode_image,
@@ -59,7 +49,13 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
                 security_opt=["no-new-privileges:true"],
                 pids_limit=256,
                 user="1000:1000",
-                environment=env,
+                environment={
+                    "OPENCODE_PORT": settings.opencode_port,
+                    "OPENAI_BASE_URL": settings.openai_base_url,
+                    "OPENAI_MODEL": settings.openai_model,
+                    "OPENAI_CONTEXT_SIZE": settings.openai_context_size,
+                    "OPENAI_OUTPUT_SIZE": settings.openai_output_size,
+                },
                 extra_hosts={"host.docker.internal": "host-gateway"},
                 auto_remove=False,
             )
@@ -74,25 +70,26 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
             container.remove()
             raise RuntimeError(f"Container {session_id}: no port binding found")
         host_port = int(port_bindings[0]["HostPort"])
-        log.info("Container started: %s on port %d — waiting for ready", container.short_id, host_port)
+        logger.info("Container started: %s on port %d — waiting for ready", container.short_id, host_port)
         _wait_ready(host_port)
-        log.info("Container ready: %s on port %d", container.short_id, host_port)
-        return ContainerInfo(container_id=container.id, host_port=host_port)
+        logger.info("Container ready: %s on port %d", container.short_id, host_port)
+        return ContainerInfo(id=container.id, port=host_port)
 
-    return await asyncio.to_thread(_start)
+    return await to_thread(_start)
 
 
 async def stop_container(container_id: str) -> None:
+
     def _stop() -> None:
         try:
-            client = docker.from_env()
-            c = client.containers.get(container_id)
-            c.stop(timeout=5)
-            c.remove()
-            log.info("Container removed: %s", container_id[:12])
+            client = from_env()
+            container = client.containers.get(container_id)
+            container.stop(timeout=5)
+            container.remove()
+            logger.info(f"Container removed: {container_id}")
         except NotFound:
-            pass
+            logger.exception(f"Container not found: {container_id}")
         except Exception:
-            log.exception("Error stopping container %s", container_id[:12])
+            logger.exception(f"Container error: {container_id}")
 
-    await asyncio.to_thread(_stop)
+    await to_thread(_stop)

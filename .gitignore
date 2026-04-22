@@ -2,4 +2,3 @@
 .venv/
 __init__.py
 __pycache__/
-.ruff_cache/

@@ -1,53 +1,67 @@
-import asyncio
+from asyncio import CancelledError, Lock, Task, create_task, gather, sleep
 import logging
-import time
-import uuid
-from dataclasses import dataclass, field
 
 from app.config import Settings
-from app.services.docker import ContainerInfo, start_container, stop_container
+from app.models.docker import ContainerInfo
+from app.models.session import Session
+from app.services.docker import start_container, stop_container
 
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class Session:
-    token: str
-    container_id: str
-    host_port: int
-    created_at: float = field(default_factory=time.time)
 
 
 class SessionManager:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._sessions: dict[str, Session] = {}
-        self._lock = asyncio.Lock()
+        self._abandon_tasks: dict[str, Task[None]] = {}
+        self._lock = Lock()
 
     async def create(self) -> Session:
         async with self._lock:
             if len(self._sessions) >= self._settings.max_containers:
                 raise RuntimeError("Max container limit reached")
-            token = uuid.uuid4().hex
-            self._sessions[token] = Session(token=token, container_id="", host_port=0)
+            session = Session()
+            self._sessions[session.token] = session
 
         try:
-            info: ContainerInfo = await start_container(token, self._settings)
+            info: ContainerInfo = await start_container(session.token, self._settings)
         except Exception:
             async with self._lock:
-                self._sessions.pop(token, None)
+                self._sessions.pop(session.token, None)
             raise
 
-        session = Session(token=token, container_id=info.container_id, host_port=info.host_port)
-        async with self._lock:
-            self._sessions[token] = session
+        session.container_info = info
+        self._abandon_tasks[session.token] = create_task(
+            self._abandon_timeout(session.token)
+        )
         return session
+
+    async def _abandon_timeout(self, token: str) -> None:
+        try:
+            await sleep(self._settings.abandon_timeout_seconds)
+        except CancelledError:
+            return
+        self._abandon_tasks.pop(token, None)
+        log.warning("Session %s abandoned — no lifecycle WS connected, closing", token)
+        await self.close(token)
+
+    async def confirm_connected(self, token: str) -> bool:
+        async with self._lock:
+            if token not in self._sessions:
+                return False
+            task = self._abandon_tasks.pop(token, None)
+        if task:
+            task.cancel()
+        return True
 
     async def close(self, token: str) -> None:
         async with self._lock:
             session = self._sessions.pop(token, None)
-        if session and session.container_id:
-            await stop_container(session.container_id)
+            task = self._abandon_tasks.pop(token, None)
+        if task:
+            task.cancel()
+        if session and session.container_info:
+            await stop_container(session.container_info.id)
 
     def get(self, token: str) -> Session | None:
         return self._sessions.get(token)
@@ -63,4 +77,4 @@ class SessionManager:
     async def close_all(self) -> None:
         tokens = list(self._sessions.keys())
         log.info("Shutting down %d session(s)", len(tokens))
-        await asyncio.gather(*(self.close(t) for t in tokens))
+        await gather(*(self.close(t) for t in tokens))

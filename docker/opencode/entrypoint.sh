@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-: "${OLLAMA_BASE_URL}"
-: "${OLLAMA_MODEL}"
+: "${OPENAI_BASE_URL}"
+: "${OPENAI_MODEL}"
+: "${OPENAI_CONTEXT_SIZE}"
+: "${OPENAI_OUTPUT_SIZE}"
 : "${OPENCODE_PORT}"
 
 CONFIG_DIR="${HOME}/.config/opencode"
@@ -12,18 +14,23 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "provider": {
-    "ollama": {
+    "Mayfly": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "DevOps",
+      "name": "Mayfly",
       "options": {
-        "baseURL": "${OLLAMA_BASE_URL}"
+        "baseURL": "${OPENAI_BASE_URL}"
       },
       "models": {
-        "${OLLAMA_MODEL}": {}
+        "${OPENAI_MODEL}": {
+          "limit": {
+            "context": ${OPENAI_CONTEXT_SIZE},
+            "output": ${OPENAI_OUTPUT_SIZE}
+          }
+        }
       }
     }
   },
-  "model": "ollama/${OLLAMA_MODEL}"
+  "model": "Mayfly/${OPENAI_MODEL}"
 }
 EOF
 
