@@ -25,6 +25,14 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
           "limit": {
             "context": ${OPENAI_CONTEXT_SIZE},
             "output": ${OPENAI_OUTPUT_SIZE}
+          },
+          "variants": {
+            "think": {
+              "reasoningEffort": "high"
+            },
+            "fast": {
+              "reasoningEffort": "low"
+            }
           }
         }
       }
