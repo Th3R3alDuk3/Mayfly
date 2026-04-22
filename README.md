@@ -1,4 +1,14 @@
-# 🦋 Mayfly
+<p align="center">
+  <img src="app/static/logo.png" alt="Mayfly Logo" width="200"/>
+</p>
+
+---
+
+![Python](https://img.shields.io/badge/python-3.13+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
+![Docker](https://img.shields.io/badge/Docker-7.0+-2496ED)
+![MCP](https://img.shields.io/badge/MCP-FastMCP-8A2BE2)
+![Status](https://img.shields.io/badge/status-alpha-orange)
 
 > Ephemere OpenCode-Container pro Browser-Session. Tab zu → Container weg.
 
