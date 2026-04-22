@@ -63,17 +63,23 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
             raise RuntimeError(f"Image not found: {settings.opencode_image}") from e
         except APIError as e:
             raise RuntimeError(f"Docker error: {e}") from e
-        container.reload()
-        port_bindings = container.ports.get(f"{settings.opencode_port}/tcp") or []
-        if not port_bindings:
-            container.stop(timeout=3)
-            container.remove()
-            raise RuntimeError(f"Container {session_id}: no port binding found")
-        host_port = int(port_bindings[0]["HostPort"])
-        logger.info("Container started: %s on port %d — waiting for ready", container.short_id, host_port)
-        _wait_ready(host_port)
-        logger.info("Container ready: %s on port %d", container.short_id, host_port)
-        return ContainerInfo(id=container.id, port=host_port)
+        try:
+            container.reload()
+            port_bindings = container.ports.get(f"{settings.opencode_port}/tcp") or []
+            if not port_bindings:
+                raise RuntimeError(f"Container {session_id}: no port binding found")
+            host_port = int(port_bindings[0]["HostPort"])
+            logger.info("Container started: %s on port %d — waiting for ready", container.short_id, host_port)
+            _wait_ready(host_port)
+            logger.info("Container ready: %s on port %d", container.short_id, host_port)
+            return ContainerInfo(id=container.id, port=host_port)
+        except Exception:
+            try:
+                container.stop(timeout=3)
+                container.remove()
+            except Exception:
+                logger.exception("Cleanup failed for container %s", container.short_id)
+            raise
 
     return await to_thread(_start)
 
