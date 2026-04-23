@@ -9,7 +9,7 @@ RUN apt-get update \
         python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai@latest @openchamber/web@latest
+RUN npm install -g opencode-ai@1.14.22 @openchamber/web@1.9.8
 
 RUN userdel -r node 2>/dev/null || true \
     && useradd -u 1000 -m -s /bin/bash user
