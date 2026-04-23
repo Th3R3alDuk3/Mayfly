@@ -7,10 +7,9 @@
 ![Python](https://img.shields.io/badge/python-3.13+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
 ![Docker](https://img.shields.io/badge/Docker-7.0+-2496ED)
-![MCP](https://img.shields.io/badge/MCP-FastMCP-8A2BE2)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> Ephemere OpenCode-Container pro Browser-Session. Tab zu → Container weg.
+> Ephemeral OpenCode containers per browser session, with `OpenChamber` as the frontend. Close the tab and the container is gone.
 
 ## ⚡ Setup
 
@@ -20,7 +19,7 @@ uv sync
 docker build -t opencode-mayfly:0.1.0 docker/opencode/
 ```
 
-Das Build-Tag muss zu `DOCKER_IMAGE` in `.env` passen.
+The build tag must match `DOCKER_IMAGE` in `.env`.
 
 ## ▶ Start
 
@@ -28,37 +27,37 @@ Das Build-Tag muss zu `DOCKER_IMAGE` in `.env` passen.
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-↻ Auto-Reload: `--reload` anhängen.
+↻ Auto reload: add `--reload`.
 
-## ↺ Ablauf
+## ↺ Flow
 
-1. `POST /session` erstellt eine Session und startet einen dedizierten OpenCode-Container.
-2. Das Frontend verbindet sich danach mit `WS /session/{token}/lifecycle`.
-3. Wenn die WebSocket-Verbindung endet oder gar nicht innerhalb von `CONTAINER_TIMEOUT` zustande kommt, wird die Session geschlossen und der Container entfernt.
+1. `POST /session` creates a session and starts a dedicated OpenCode container.
+2. The `OpenChamber` frontend then connects to `WS /session/{token}/lifecycle`.
+3. If the WebSocket connection ends, or is not established within `CONTAINER_TIMEOUT`, the session is closed and the container is removed.
 
-Beim App-Shutdown räumt Mayfly alle noch offenen Sessions ebenfalls weg.
+When the app shuts down, Mayfly also cleans up any remaining open sessions.
 
-## ⚙ Konfiguration (`.env`)
+## ⚙ Configuration (`.env`)
 
 | Variable | |
 |---|---|
-| `DOCKER_IMAGE` | Container-Image |
-| `DOCKER_PORT` | Port im Container |
-| `MAX_CONTAINERS` | Max Sessions |
-| `CONTAINER_MEMORY` | RAM je Container |
-| `CONTAINER_CPUS` | CPU je Container |
+| `DOCKER_IMAGE` | Container image |
+| `DOCKER_PORT` | Port inside the container |
+| `MAX_CONTAINERS` | Maximum number of sessions |
+| `CONTAINER_MEMORY` | RAM per container |
+| `CONTAINER_CPUS` | CPU allocation per container |
 | `CONTAINER_TMPFS_SIZE` | `/home/user` tmpfs |
-| `CONTAINER_TIMEOUT` | Sekunden bis zum Abbruch, falls keine Lifecycle-WS verbunden wird |
-| `OPENAI_BASE_URL` | OpenAI-kompatible API |
-| `OPENAI_MODEL` | Modell-Name |
-| `OPENAI_CONTEXT_SIZE` | Context-Window |
-| `OPENAI_OUTPUT_SIZE` | Max Output-Tokens |
+| `CONTAINER_TIMEOUT` | Seconds before aborting if no lifecycle WebSocket connects |
+| `OPENAI_BASE_URL` | OpenAI-compatible API |
+| `OPENAI_MODEL` | Model name |
+| `OPENAI_CONTEXT_SIZE` | Context window |
+| `OPENAI_OUTPUT_SIZE` | Maximum output tokens |
 
-Standardwerte stehen in `.env.example`.
+Default values are defined in `.env.example`.
 
 ## 🐳 Docker-Image
 
-Das Container-Image installiert derzeit:
+The container image currently installs `opencode-ai` and `OpenChamber` as the web frontend:
 
 | Paket | Version |
 |---|---|
@@ -69,8 +68,8 @@ Das Container-Image installiert derzeit:
 
 | | | |
 |---|---|---|
-| `GET`  | `/`                          | Landing Page |
+| `GET`  | `/`                          | Landing page |
 | `GET`  | `/status`                    | `{open, free, max}` |
-| `POST` | `/session`                   | Container starten → `{token, url}` · `503` bei Limit oder Startfehler |
-| `WS`   | `/session/{token}/lifecycle` | Verbindungsende ⇒ Session schließen und Container stoppen |
-| `*`    | `/mcp`                       | Streamable-HTTP MCP |
+| `POST` | `/session`                   | Start container → `{token, url}` · `503` if the limit is reached or startup fails |
+| `WS`   | `/session/{token}/lifecycle` | Connection ends ⇒ close session and stop container |
+| `*`    | `/mcp`                       | Streamable HTTP MCP |

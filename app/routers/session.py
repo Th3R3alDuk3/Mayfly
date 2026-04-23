@@ -14,7 +14,7 @@ router = APIRouter()
     status_code=201,
     response_model=SessionCreateResponse,
     tags=["mayfly", "opencode", "session", "create"],
-    description="Startet eine Session mit eigenem OpenCode-Web-Container.",
+    description="Starts a session with its own OpenCode web container.",
 )
 async def create_session(request: Request) -> SessionCreateResponse:
     manager: SessionManager = request.app.state.manager
@@ -34,7 +34,7 @@ async def create_session(request: Request) -> SessionCreateResponse:
     path="/status",
     response_model=SessionStatusResponse,
     tags=["mayfly", "opencode", "session", "status"],
-    description="Liefert Belegung: offene, freie und maximale Container.",
+    description="Returns the number of open, free, and maximum containers.",
 )
 async def get_status(request: Request) -> SessionStatusResponse:
     manager: SessionManager = request.app.state.manager

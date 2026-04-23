@@ -1,8 +1,15 @@
 [project]
 name = "Mayfly"
 version = "0.1.0"
-description = "FastAPI service that manages per-session OpenCode Docker containers"
+description = "FastAPI service for ephemeral per-session OpenCode/OpenChamber Docker containers"
+readme = "README.md"
 requires-python = ">=3.13"
+keywords = [
+    "opencode",
+    "openchamber",
+    "distributed",
+    "ephemeral-containers",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
