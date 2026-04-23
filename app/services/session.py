@@ -31,6 +31,7 @@ class SessionManager:
         self._settings = settings
         self._sessions: dict[str, Session] = {}
         self._abandon_tasks: dict[str, Task[None]] = {}
+        self._close_tasks: dict[str, Task[None]] = {}
         self._lock = Lock()
         self._loop = get_running_loop()
         self._events_shutdown = ThreadEvent()
@@ -99,7 +100,7 @@ class SessionManager:
 
     async def confirm_connected(self, token: str) -> bool:
         async with self._lock:
-            if token not in self._sessions:
+            if token not in self._sessions or token in self._close_tasks:
                 return False
             task = self._abandon_tasks.pop(token, None)
         if task:
@@ -108,12 +109,36 @@ class SessionManager:
 
     async def close(self, token: str) -> None:
         async with self._lock:
-            session = self._sessions.pop(token, None)
-            task = self._abandon_tasks.pop(token, None)
-        if task:
-            task.cancel()
-        if session and session.container_info:
-            await stop_container(session.container_info.id)
+            close_task = self._close_tasks.get(token)
+            if close_task is None:
+                session = self._sessions.get(token)
+                if session is None:
+                    return
+                close_task = create_task(self._close_session(token, session))
+                self._close_tasks[token] = close_task
+        await close_task
+
+    async def _close_session(self, token: str, session: Session) -> None:
+        async with self._lock:
+            abandon_task = self._abandon_tasks.pop(token, None)
+        if abandon_task:
+            abandon_task.cancel()
+
+        cleanup_succeeded = False
+        try:
+            if session.container_info:
+                await stop_container(session.container_info.id)
+            cleanup_succeeded = True
+        except Exception:
+            log.exception(
+                "Failed to clean up session %s; keeping slot reserved until cleanup succeeds",
+                token,
+            )
+        finally:
+            async with self._lock:
+                if cleanup_succeeded:
+                    self._sessions.pop(token, None)
+                self._close_tasks.pop(token, None)
 
     def get(self, token: str) -> Session | None:
         return self._sessions.get(token)
@@ -132,6 +157,7 @@ class SessionManager:
             self._events_client.close()
         except Exception:
             log.exception("Failed to close Docker events client")
-        tokens = list(self._sessions.keys())
+        async with self._lock:
+            tokens = list(self._sessions.keys())
         log.info("Shutting down %d session(s)", len(tokens))
         await gather(*(self.close(t) for t in tokens))

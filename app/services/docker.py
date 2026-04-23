@@ -88,15 +88,34 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
 async def stop_container(container_id: str) -> None:
 
     def _stop() -> None:
+        client = from_env()
         try:
-            client = from_env()
-            container = client.containers.get(container_id)
-            container.stop(timeout=5)
-            container.remove()
-            logger.info(f"Container removed: {container_id}")
+            try:
+                container = client.containers.get(container_id)
+            except NotFound:
+                logger.info("Container already gone: %s", container_id)
+                return
+
+            try:
+                container.stop(timeout=5)
+            except NotFound:
+                logger.info("Container already stopped: %s", container_id)
+                return
+            except APIError as e:
+                raise RuntimeError(f"Failed to stop container {container_id}: {e}") from e
+
+            try:
+                container.remove()
+            except NotFound:
+                logger.info("Container already removed: %s", container_id)
+                return
+            except APIError as e:
+                raise RuntimeError(f"Failed to remove container {container_id}: {e}") from e
+
+            logger.info("Container removed: %s", container_id)
         except NotFound:
-            logger.exception(f"Container not found: {container_id}")
-        except Exception:
-            logger.exception(f"Container error: {container_id}")
+            logger.info("Container already gone: %s", container_id)
+        finally:
+            client.close()
 
     await to_thread(_stop)
