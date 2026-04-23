@@ -1,7 +1,9 @@
 from asyncio import to_thread
+from collections.abc import Iterator
 from http.client import HTTPResponse
 from logging import getLogger
 from time import monotonic, sleep
+from typing import Any
 from urllib.request import urlopen
 
 from docker import from_env
@@ -20,44 +22,32 @@ _HEALTH_POLL = 3
 _CONTAINER_HOSTNAME = "mayfly"
 
 
-def _container_name(session_id: str) -> str:
-    return f"opencode-{session_id}"
-
-
-def _container_tmpfs(settings: Settings) -> dict[str, str]:
-    return {
-        "/home/user": f"size={settings.container_tmpfs_size},uid=1000,exec",
-        "/tmp": "size=64m,uid=1000,exec",
-    }
-
-
-def _container_environment(settings: Settings) -> dict[str, str | int]:
-    return {
-        "DOCKER_PORT": settings.docker_port,
-        "OPENAI_BASE_URL": settings.openai_base_url,
-        "OPENAI_MODEL": settings.openai_model,
-        "OPENAI_CONTEXT_SIZE": settings.openai_context_size,
-        "OPENAI_OUTPUT_SIZE": settings.openai_output_size,
-    }
-
-
 def _run_container(client: DockerClient, session_id: str, settings: Settings) -> Container:
     try:
         return client.containers.run(
             settings.docker_image,
             detach=True,
-            name=_container_name(session_id),
+            name=f"opencode-{session_id}",
             hostname=_CONTAINER_HOSTNAME,
             ports={f"{settings.docker_port}/tcp": None},
             mem_limit=settings.container_memory,
             nano_cpus=int(settings.container_cpus * 1_000_000_000),
-            tmpfs=_container_tmpfs(settings),
+            tmpfs={
+                "/home/user": f"size={settings.container_tmpfs_size},uid=1000,exec",
+                "/tmp": "size=64m,uid=1000,exec",
+            },
             read_only=True,
             cap_drop=["ALL"],
             security_opt=["no-new-privileges:true"],
             pids_limit=256,
             user="1000:1000",
-            environment=_container_environment(settings),
+            environment={
+                "DOCKER_PORT": settings.docker_port,
+                "OPENAI_BASE_URL": settings.openai_base_url,
+                "OPENAI_MODEL": settings.openai_model,
+                "OPENAI_CONTEXT_SIZE": settings.openai_context_size,
+                "OPENAI_OUTPUT_SIZE": settings.openai_output_size,
+            },
             extra_hosts={"host.docker.internal": "host-gateway"},
             auto_remove=False,
         )
@@ -120,14 +110,21 @@ def _wait_ready(host_port: int) -> HTTPResponse:
     raise TimeoutError(f"OpenCode not ready on port {host_port} after {_HEALTH_TIMEOUT}s")
 
 
-async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
-    def _start() -> ContainerInfo:
+class DockerRuntime:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._events_client = from_env()
+
+    async def start_session_container(self, session_id: str) -> ContainerInfo:
+        return await to_thread(self._start_session_container, session_id)
+
+    def _start_session_container(self, session_id: str) -> ContainerInfo:
         client = from_env()
         container: Container | None = None
 
         try:
-            container = _run_container(client, session_id, settings)
-            host_port = _host_port(container, settings.docker_port, session_id)
+            container = _run_container(client, session_id, self._settings)
+            host_port = _host_port(container, self._settings.docker_port, session_id)
             logger.info(
                 "Container started: %s on port %d — waiting for ready",
                 container.short_id,
@@ -143,11 +140,10 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
         finally:
             client.close()
 
-    return await to_thread(_start)
+    async def stop_container(self, container_id: str) -> None:
+        await to_thread(self._stop_container, container_id)
 
-
-async def stop_container(container_id: str) -> None:
-    def _stop() -> None:
+    def _stop_container(self, container_id: str) -> None:
         client = from_env()
         try:
             container = _get_container(client, container_id)
@@ -159,4 +155,8 @@ async def stop_container(container_id: str) -> None:
         finally:
             client.close()
 
-    await to_thread(_stop)
+    def iter_container_events(self) -> Iterator[dict[str, Any]]:
+        return self._events_client.events(decode=True, filters={"type": "container"})
+
+    def close(self) -> None:
+        self._events_client.close()

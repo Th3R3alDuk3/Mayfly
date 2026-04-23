@@ -13,12 +13,9 @@ from logging import getLogger
 from threading import Event as ThreadEvent, Thread
 from typing import Any
 
-from docker import from_env
-from docker.client import DockerClient
-
 from app.config import Settings
 from app.models.session import Session
-from app.services.docker import start_container, stop_container
+from app.services.docker import DockerRuntime
 
 
 logger = getLogger(__name__)
@@ -53,13 +50,13 @@ def _dead_container_event(event: dict[str, Any]) -> tuple[str, str] | None:
 
 
 class SessionManager:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, runtime: DockerRuntime | None = None) -> None:
         self._settings = settings
+        self._runtime = runtime or DockerRuntime(settings)
         self._sessions: dict[str, ManagedSession] = {}
         self._lock = Lock()
         self._loop = get_running_loop()
         self._events_shutdown = ThreadEvent()
-        self._events_client: DockerClient = from_env()
         self._events_thread = Thread(
             target=self._watch_events,
             name="mayfly-docker-events",
@@ -77,7 +74,7 @@ class SessionManager:
             self._sessions[token] = entry
 
         try:
-            entry.session.container_info = await start_container(token, self._settings)
+            entry.session.container_info = await self._runtime.start_session_container(token)
         except Exception:
             async with self._lock:
                 self._sessions.pop(token, None)
@@ -88,7 +85,7 @@ class SessionManager:
 
     def _watch_events(self) -> None:
         try:
-            for event in self._events_client.events(decode=True, filters={"type": "container"}):
+            for event in self._runtime.iter_container_events():
                 if self._events_shutdown.is_set():
                     return
                 self._dispatch_event(event)
@@ -166,7 +163,7 @@ class SessionManager:
         cleanup_succeeded = False
         try:
             if entry.session.container_info:
-                await stop_container(entry.session.container_info.id)
+                await self._runtime.stop_container(entry.session.container_info.id)
             cleanup_succeeded = True
         except Exception:
             logger.exception(
@@ -202,7 +199,7 @@ class SessionManager:
     async def close_all(self) -> None:
         self._events_shutdown.set()
         try:
-            self._events_client.close()
+            self._runtime.close()
         except Exception:
             logger.exception("Failed to close Docker events client")
 
