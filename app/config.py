@@ -9,10 +9,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    public_host: str
-    #
-    opencode_image: str
-    opencode_port: int
+    docker_image: str
+    docker_port: int
     #
     max_containers: int
     container_memory: str

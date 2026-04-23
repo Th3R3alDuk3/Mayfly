@@ -1,76 +1,84 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="h-full">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenCode</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0d0d0d; color: #e0e0e0; font-family: system-ui, sans-serif; }
-
-    #loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      gap: 20px;
-    }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid #333;
-      border-top-color: #888;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #status-text { font-size: 14px; color: #888; }
-    #error-box {
-      display: none;
-      background: #1e0a0a;
-      border: 1px solid #5c1a1a;
-      border-radius: 6px;
-      padding: 16px 24px;
-      color: #f08080;
-      font-size: 14px;
-      max-width: 400px;
-      text-align: center;
-    }
-
-    #frame-wrap {
-      display: none;
-      width: 100vw;
-      height: 100vh;
-    }
-    iframe {
-      display: block;
-      width: 100%; height: 100%;
-      border: none;
-    }
-  </style>
+  <title>Mayfly</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>window.tailwind || document.write('<script src="/tailwind.js"><\/script>')</script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>window.lucide || document.write('<script src="/lucide.min.js"><\/script>')</script>
 </head>
-<body>
-  <div id="loading">
-    <div class="spinner"></div>
-    <span id="status-text">Starting OpenCode…</span>
-    <div id="error-box"></div>
-  </div>
-  <div id="frame-wrap">
-    <iframe id="frame" src="" allow="clipboard-read; clipboard-write"></iframe>
+<body class="h-full bg-neutral-950 text-neutral-200 antialiased">
+  <div class="flex h-full flex-col">
+    <header class="flex h-14 shrink-0 items-center justify-between border-b border-neutral-800 px-5">
+      <div class="flex items-center gap-2.5">
+        <img src="/logo.png" alt="" class="h-7 w-7 select-none" draggable="false">
+        <span class="text-sm font-semibold tracking-wide text-neutral-100">Mayfly</span>
+      </div>
+      <div id="status-pill"
+           class="flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-400"
+           title="Container: offen / maximum">
+        <i data-lucide="container" class="h-3.5 w-3.5"></i>
+        <span id="status-value" class="font-mono tabular-nums">–/–</span>
+      </div>
+    </header>
+
+    <main class="flex-1">
+      <div id="loading" class="flex h-full flex-col items-center justify-center gap-5">
+        <img src="/logo.png" alt="Mayfly" class="h-32 w-32 select-none" draggable="false">
+        <span id="status-text" class="text-sm text-neutral-400">Starting OpenCode…</span>
+        <i id="spinner" data-lucide="loader-circle" class="h-9 w-9 animate-spin text-neutral-500"></i>
+        <div id="error-box"
+             class="hidden max-w-sm items-start gap-3 rounded-md border border-red-900/60 bg-red-950/40 px-5 py-4 text-sm text-red-300">
+          <i data-lucide="triangle-alert" class="mt-0.5 h-4 w-4 shrink-0"></i>
+          <span id="error-text"></span>
+        </div>
+      </div>
+
+      <iframe id="frame" class="hidden h-full w-full border-0" allow="clipboard-read; clipboard-write"></iframe>
+    </main>
   </div>
 
   <script>
+    lucide.createIcons();
+
     const statusText = document.getElementById('status-text');
     const errorBox = document.getElementById('error-box');
+    const errorText = document.getElementById('error-text');
     const loading = document.getElementById('loading');
-    const frameWrap = document.getElementById('frame-wrap');
     const frame = document.getElementById('frame');
+    const spinner = document.getElementById('spinner');
+    const statusPill = document.getElementById('status-pill');
+    const statusValue = document.getElementById('status-value');
+
+    const PILL_BASE = 'flex items-center gap-2 rounded-full border px-3 py-1 text-xs';
+    const PILL_IDLE = `${PILL_BASE} border-neutral-800 bg-neutral-900 text-neutral-400`;
+    const PILL_OK   = `${PILL_BASE} border-emerald-900/60 bg-emerald-950/40 text-emerald-300`;
+    const PILL_FULL = `${PILL_BASE} border-amber-900/60 bg-amber-950/40 text-amber-300`;
+    const PILL_ERR  = `${PILL_BASE} border-red-900/60 bg-red-950/40 text-red-300`;
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/status', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { open, max } = await res.json();
+        statusValue.textContent = `${open}/${max}`;
+        statusPill.className = open >= max ? PILL_FULL : open > 0 ? PILL_OK : PILL_IDLE;
+      } catch {
+        statusValue.textContent = '–/–';
+        statusPill.className = PILL_ERR;
+      }
+    }
+
+    refreshStatus();
+    setInterval(refreshStatus, 60_000);
 
     function showError(msg) {
       statusText.textContent = 'Failed to start OpenCode.';
-      errorBox.textContent = msg;
-      errorBox.style.display = 'block';
-      document.querySelector('.spinner').style.display = 'none';
+      errorText.textContent = msg;
+      errorBox.classList.replace('hidden', 'flex');
+      spinner.classList.add('hidden');
     }
 
     async function start() {
@@ -91,12 +99,12 @@
       const { token, url } = await res.json();
 
       const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${wsProto}://${location.host}/session/${token}/lifecycle`);
-      ws.onclose = () => console.info('Lifecycle WS closed — container will stop');
+      new WebSocket(`${wsProto}://${location.host}/session/${token}/lifecycle`);
 
       frame.src = url;
-      loading.style.display = 'none';
-      frameWrap.style.display = 'block';
+      loading.classList.add('hidden');
+      frame.classList.remove('hidden');
+      refreshStatus();
     }
 
     start();

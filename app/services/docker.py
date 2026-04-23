@@ -34,10 +34,10 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
         client = from_env()
         try:
             container = client.containers.run(
-                settings.opencode_image,
+                settings.docker_image,
                 detach=True,
                 name=f"opencode-{session_id}",
-                ports={f"{settings.opencode_port}/tcp": None},
+                ports={f"{settings.docker_port}/tcp": None},
                 mem_limit=settings.container_memory,
                 nano_cpus=int(settings.container_cpus * 1_000_000_000),
                 tmpfs={
@@ -50,7 +50,7 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
                 pids_limit=256,
                 user="1000:1000",
                 environment={
-                    "OPENCODE_PORT": settings.opencode_port,
+                    "DOCKER_PORT": settings.docker_port,
                     "OPENAI_BASE_URL": settings.openai_base_url,
                     "OPENAI_MODEL": settings.openai_model,
                     "OPENAI_CONTEXT_SIZE": settings.openai_context_size,
@@ -60,12 +60,12 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
                 auto_remove=False,
             )
         except ImageNotFound as e:
-            raise RuntimeError(f"Image not found: {settings.opencode_image}") from e
+            raise RuntimeError(f"Image not found: {settings.docker_image}") from e
         except APIError as e:
             raise RuntimeError(f"Docker error: {e}") from e
         try:
             container.reload()
-            port_bindings = container.ports.get(f"{settings.opencode_port}/tcp") or []
+            port_bindings = container.ports.get(f"{settings.docker_port}/tcp") or []
             if not port_bindings:
                 raise RuntimeError(f"Container {session_id}: no port binding found")
             host_port = int(port_bindings[0]["HostPort"])

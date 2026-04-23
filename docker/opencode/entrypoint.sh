@@ -5,7 +5,7 @@ set -e
 : "${OPENAI_MODEL}"
 : "${OPENAI_CONTEXT_SIZE}"
 : "${OPENAI_OUTPUT_SIZE}"
-: "${OPENCODE_PORT}"
+: "${DOCKER_PORT}"
 
 CONFIG_DIR="${HOME}/.config/opencode"
 mkdir -p "${CONFIG_DIR}"
@@ -42,6 +42,9 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
 }
 EOF
 
+WORKSPACE_DIR="${HOME}/WORKSPACE"
+mkdir -p "${WORKSPACE_DIR}"
+
 cd "${HOME}"
 
-exec opencode web --hostname 0.0.0.0 --port "${OPENCODE_PORT}"
+exec openchamber --foreground --host 0.0.0.0 --port "${DOCKER_PORT}"

@@ -32,13 +32,12 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 | Variable | |
 |---|---|
-| `OPENCODE_IMAGE` | Container-Image |
+| `DOCKER_IMAGE` | Container-Image |
+| `DOCKER_PORT` | Port im Container |
 | `MAX_CONTAINERS` | Max Sessions |
 | `CONTAINER_MEMORY` | RAM je Container |
 | `CONTAINER_CPUS` | CPU je Container |
 | `CONTAINER_TMPFS_SIZE` | `/home/user` tmpfs |
-| `OPENCODE_PORT` | Port im Container |
-| `PUBLIC_HOST` | vom Browser erreichbare Host-Adresse |
 | `OPENAI_BASE_URL` | OpenAI-kompatible API |
 | `OPENAI_MODEL` | Modell-Name |
 | `OPENAI_CONTEXT_SIZE` | Context-Window |

@@ -1,4 +1,4 @@
-FROM ubuntu:25.10
+FROM node:25-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,12 +7,11 @@ RUN apt-get update \
         curl \
         ca-certificates \
         python3 python3-pip python3-venv \
-        nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai@latest
+RUN npm install -g opencode-ai@latest @openchamber/web@latest
 
-RUN userdel -r ubuntu 2>/dev/null || true \
+RUN userdel -r node 2>/dev/null || true \
     && useradd -u 1000 -m -s /bin/bash user
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
