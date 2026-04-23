@@ -21,7 +21,7 @@ docker build -t opencode-mayfly:0.1.0 docker/opencode/
 
 The build tag must match `DOCKER_IMAGE` in `.env`.
 
-## ▶ Start
+## 🚀 Start
 
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
