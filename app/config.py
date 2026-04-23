@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     container_memory: str
     container_cpus: float
     container_tmpfs_size: str
-    abandon_timeout_seconds: float
+    container_timeout: float
     #
     openai_base_url: str
     openai_model: str

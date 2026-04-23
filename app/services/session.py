@@ -90,7 +90,7 @@ class SessionManager:
 
     async def _abandon_timeout(self, token: str) -> None:
         try:
-            await sleep(self._settings.abandon_timeout_seconds)
+            await sleep(self._settings.container_timeout)
         except CancelledError:
             return
         self._abandon_tasks.pop(token, None)
