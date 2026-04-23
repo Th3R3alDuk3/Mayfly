@@ -1,12 +1,16 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from logging import INFO, basicConfig
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routers import lifecycle, session
 from app.services.session import SessionManager
+
+
+STATIC_DIR = "app/static"
 
 
 basicConfig(level=INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -25,6 +29,6 @@ app.include_router(lifecycle.router)
 
 app.mount(
     path="/",
-    app=StaticFiles(directory="app/static", html=True),
+    app=StaticFiles(directory=STATIC_DIR, html=True),
     name="static",
 )
