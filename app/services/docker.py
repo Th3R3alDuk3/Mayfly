@@ -37,6 +37,7 @@ async def start_container(session_id: str, settings: Settings) -> ContainerInfo:
                 settings.docker_image,
                 detach=True,
                 name=f"opencode-{session_id}",
+                hostname="mayfly",
                 ports={f"{settings.docker_port}/tcp": None},
                 mem_limit=settings.container_memory,
                 nano_cpus=int(settings.container_cpus * 1_000_000_000),
