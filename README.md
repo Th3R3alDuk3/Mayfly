@@ -9,7 +9,7 @@
 ![Docker](https://img.shields.io/badge/Docker-7.0+-2496ED)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> Ephemeral OpenCode containers per browser session, with `OpenChamber` as the frontend. Close the tab and the container is gone.
+> Ephemeral `OpenCode` containers per browser session, with `OpenChamber` as the frontend. Close the tab and the container is gone.
 
 ## ⚡ Setup
 
