@@ -76,4 +76,3 @@ The container image currently installs `opencode-ai` and `OpenChamber` as the we
 | `GET`  | `/status`                    | `{open, free, max}` |
 | `POST` | `/session`                   | Start container → `{token, url}` · `503` if the limit is reached or startup fails |
 | `WS`   | `/session/{token}/lifecycle` | Connection ends ⇒ close session and stop container |
-| `*`    | `/mcp`                       | Streamable HTTP MCP |
