@@ -15,7 +15,11 @@
 
 ```bash
 cp .env.example .env
+```
+```bash
 uv sync
+```
+```bash
 docker build -t opencode-mayfly:0.1.0 docker/opencode/
 ```
 
