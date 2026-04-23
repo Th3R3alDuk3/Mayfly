@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>Mayfly</title>
-  <script src="/tailwind.js"></script>
+  <script src="/tailwindcss-browser-4.2.4.js"></script>
 </head>
 <body class="h-full antialiased text-neutral-900 bg-neutral-50 dark:text-neutral-200 dark:bg-neutral-950">
   <div class="flex flex-col h-full">
@@ -16,10 +16,11 @@
         <span class="text-sm font-semibold tracking-wide text-neutral-900 dark:text-neutral-100">Mayfly</span>
       </div>
       <div id="status-pill"
-           class="flex items-center gap-2 px-3 py-1 text-xs rounded-full border text-neutral-500 bg-neutral-100
+           class="flex h-7 min-w-12 items-center justify-center px-3 text-xs rounded-full border
+                  text-neutral-500 bg-neutral-100
                   border-neutral-200 dark:text-neutral-400 dark:bg-neutral-900 dark:border-neutral-800"
            title="Container: offen / maximum">
-        <span id="status-value" class="font-mono tabular-nums">–/–</span>
+        <span id="status-value" class="block text-center leading-none font-mono tabular-nums">–/–</span>
       </div>
     </header>
 
@@ -51,7 +52,7 @@
     const statusPill = document.getElementById('status-pill');
     const statusValue = document.getElementById('status-value');
 
-    const PILL_BASE = 'flex items-center gap-2 px-3 py-1 text-xs rounded-full border';
+    const PILL_BASE = 'flex h-7 min-w-12 items-center justify-center px-3 text-xs rounded-full border';
     const PILL_IDLE = `${PILL_BASE} text-neutral-500 bg-neutral-100 border-neutral-200`
                     + ' dark:text-neutral-400 dark:bg-neutral-900 dark:border-neutral-800';
     const PILL_OK   = `${PILL_BASE} text-emerald-700 bg-emerald-50 border-emerald-200`
