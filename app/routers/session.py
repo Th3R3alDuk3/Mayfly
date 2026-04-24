@@ -2,7 +2,7 @@ from logging import getLogger
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from app.config import get_settings
+from app.config import SettingsDep
 from app.models.session import SessionCreateResponse, SessionStatusResponse
 from app.services.session import SessionManager
 
@@ -16,12 +16,11 @@ router = APIRouter()
     status_code=201,
     response_model=SessionCreateResponse,
     operation_id="create_mayfly_session",
-    tags=["mayfly", "opencode", "session", "create"],
+    tags=["sessions"],
     description="Starts a session with its own Mayfly web container.",
 )
-async def create_session(request: Request) -> SessionCreateResponse:
+async def create_session(request: Request, settings: SettingsDep) -> SessionCreateResponse:
 
-    settings = get_settings()
     manager: SessionManager = request.app.state.manager
 
     try:
@@ -38,7 +37,7 @@ async def create_session(request: Request) -> SessionCreateResponse:
     path="/sessions/{token}",
     status_code=204,
     operation_id="delete_mayfly_session",
-    tags=["mayfly", "opencode", "session", "delete"],
+    tags=["sessions"],
     description="Stops the container associated with the given session token.",
 )
 async def delete_session(token: str, request: Request) -> None:
@@ -55,7 +54,7 @@ async def delete_session(token: str, request: Request) -> None:
     path="/sessions/status",
     response_model=SessionStatusResponse,
     operation_id="get_mayfly_status",
-    tags=["mayfly", "opencode", "session", "status"],
+    tags=["sessions"],
     description="Returns the number of open, free, and maximum containers.",
 )
 async def get_sessions_status(request: Request) -> SessionStatusResponse:

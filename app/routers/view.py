@@ -1,8 +1,10 @@
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import get_settings
+from app.config import SettingsDep
 from app.services.session import SessionManager
 
 
@@ -17,7 +19,7 @@ templates = Jinja2Templates(directory="app/templates")
 )
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
-        request=request, 
+        request=request,
         name="index.html",
     )
 
@@ -27,9 +29,8 @@ async def index(request: Request) -> HTMLResponse:
     include_in_schema=False,
     response_class=HTMLResponse,
 )
-async def view_session(token: str, request: Request) -> HTMLResponse:
+async def view_session(token: str, request: Request, settings: SettingsDep) -> HTMLResponse:
 
-    settings = get_settings()
     manager: SessionManager = request.app.state.manager
 
     session = manager.get(token)
