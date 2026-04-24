@@ -28,7 +28,7 @@ The build tag must match `DOCKER_IMAGE` in `.env`.
 ## 🚀 Start
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8123
 ```
 
 ↻ Auto reload: add `--reload`.
@@ -76,3 +76,6 @@ The container image currently installs `opencode-ai` and `OpenChamber` as the we
 | `GET`  | `/status`                    | `{open, free, max}` |
 | `POST` | `/session`                   | Start container → `{token, url}` · `503` if the limit is reached or startup fails |
 | `WS`   | `/session/{token}/lifecycle` | Connection ends ⇒ close session and stop container |
+| `POST` | `/mcp/`                      | MCP endpoint exposing the HTTP API as tools |
+
+The MCP server is generated from the FastAPI OpenAPI schema via FastMCP. Use `/mcp/` as the canonical endpoint; The current tool names are `get_mayfly_status` and `create_mayfly_session`.
