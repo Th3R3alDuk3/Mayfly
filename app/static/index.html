@@ -15,7 +15,7 @@
     <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
       <img src="/logo.png" alt="Mayfly" class="h-56 w-56 select-none" draggable="false">
       <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
-        Starting OpenCode…
+        Starting Mayfly…
       </span>
       <div id="spinner"
            class="h-9 w-9 rounded-full border-4 border-neutral-300 dark:border-neutral-700
@@ -35,7 +35,7 @@
     const spinner = document.getElementById('spinner');
 
     function showError(msg) {
-      statusText.textContent = 'Failed to start OpenCode.';
+      statusText.textContent = 'Failed to start Mayfly.';
       errorText.textContent = msg;
       errorBox.classList.remove('hidden');
       spinner.classList.add('hidden');

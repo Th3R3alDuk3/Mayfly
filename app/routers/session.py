@@ -22,7 +22,7 @@ _VIEW_HTML = Path("app/static/view.html").read_text(encoding="utf-8")
     response_model=SessionCreateResponse,
     operation_id="create_mayfly_session",
     tags=["mayfly", "opencode", "session", "create"],
-    description="Starts a session with its own OpenCode web container.",
+    description="Starts a session with its own Mayfly web container.",
 )
 async def create_session(request: Request) -> SessionCreateResponse:
 

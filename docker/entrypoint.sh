@@ -13,6 +13,7 @@ mkdir -p "${CONFIG_DIR}"
 cat > "${CONFIG_DIR}/opencode.json" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "enabled_providers": ["Mayfly"],
   "provider": {
     "Mayfly": {
       "npm": "@ai-sdk/openai-compatible",

@@ -63,7 +63,7 @@ def _wait_ready(host_port: int) -> HTTPResponse:
             return urlopen(url, timeout=3)
         except Exception:
             sleep(_HEALTH_POLL)
-    raise TimeoutError(f"OpenCode not ready on port {host_port} after {_HEALTH_TIMEOUT}s")
+    raise TimeoutError(f"Mayfly not ready on port {host_port} after {_HEALTH_TIMEOUT}s")
 
 
 class DockerRuntime:
