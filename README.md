@@ -20,7 +20,7 @@ cp .env.example .env
 uv sync
 ```
 ```bash
-docker build -t opencode-mayfly:0.1.0 docker/opencode/
+docker build -t mayfly:0.1.0 docker/
 ```
 
 The build tag must match `DOCKER_IMAGE` in `.env`.
