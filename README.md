@@ -58,9 +58,9 @@ Mayfly exposes a small API:
 | Method | Path |
 |---|---|
 | `GET` | `/` |
-| `POST` | `/session` |
-| `DELETE` | `/session/{token}` |
+| `POST` | `/sessions` |
+| `DELETE` | `/sessions/{token}` |
 | `GET` | `/sessions/status` |
 | `GET` | `/view/{token}` |
-| `WS` | `/session/{token}/lifecycle` |
+| `WS` | `/sessions/{token}/lifecycle` |
 | `POST` | `/mcp/` |
