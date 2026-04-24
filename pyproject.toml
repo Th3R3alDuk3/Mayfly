@@ -15,4 +15,5 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "docker>=7.0",
     "pydantic-settings>=2.0",
+    "fastmcp==3.2.4",
 ]

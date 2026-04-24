@@ -13,6 +13,7 @@ router = APIRouter()
     path="/session",
     status_code=201,
     response_model=SessionCreateResponse,
+    operation_id="create_mayfly_session",
     tags=["mayfly", "opencode", "session", "create"],
     description="Starts a session with its own OpenCode web container.",
 )
@@ -33,6 +34,7 @@ async def create_session(request: Request) -> SessionCreateResponse:
 @router.get(
     path="/status",
     response_model=SessionStatusResponse,
+    operation_id="get_mayfly_status",
     tags=["mayfly", "opencode", "session", "status"],
     description="Returns the number of open, free, and maximum containers.",
 )
