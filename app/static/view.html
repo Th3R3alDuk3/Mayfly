@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" href="/logo.png">
+  <title>Mayfly</title>
+  <script src="/tailwindcss-browser-4.2.4.js"></script>
+</head>
+<body class="h-full bg-neutral-50 dark:bg-neutral-950">
+  <iframe src="{{container_url}}" class="block w-full h-full border-0" allow="clipboard-read; clipboard-write"></iframe>
+  <script>
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    new WebSocket(`${wsProto}://${location.host}/session/{{token}}/lifecycle`);
+  </script>
+</body>
+</html>

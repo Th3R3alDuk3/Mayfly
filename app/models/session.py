@@ -21,11 +21,22 @@ class ManagedSession(BaseModel):
 
 
 class SessionCreateResponse(BaseModel):
-    token: str = Field(min_length=1)
-    url: str = Field(min_length=1)
+    url: str = Field(
+        min_length=1,
+        description="URL for web container access."
+    )
 
 
 class SessionStatusResponse(BaseModel):
-    open: int = Field(ge=0)
-    free: int = Field(ge=0)
-    max: int = Field(gt=0)
+    open: int = Field(
+        ge=0, 
+        description="Currently running containers.",
+    )
+    free: int = Field(
+        ge=0, 
+        description="Additional containers that can be started.",
+    )
+    max: int = Field(
+        gt=0, 
+        description="Maximum number of concurrent containers.",
+    )

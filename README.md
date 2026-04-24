@@ -33,11 +33,14 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8123
 
 ↻ Auto reload: add `--reload`.
 
+`PUBLIC_PORT` must match the browser-reachable Mayfly port, unless a reverse proxy maps another public port to Uvicorn. For local development on `8123`, set `PUBLIC_PORT=8123` in `.env` and start Uvicorn with `--port 8123`.
+
 ## ↺ Flow
 
-1. `POST /session` creates a session and starts a dedicated OpenCode container.
-2. The `OpenChamber` frontend then connects to `WS /session/{token}/lifecycle`.
-3. If the WebSocket connection ends, or is not established within `CONTAINER_TIMEOUT`, the session is closed and the container is removed.
+1. `GET /` serves the static landing page, which polls `GET /status` and calls `POST /session`.
+2. `POST /session` starts a dedicated OpenCode/OpenChamber container and returns a viewer URL: `http://PUBLIC_HOST:PUBLIC_PORT/{host_port}/{token}`.
+3. The viewer route `GET /{host_port}/{token}` embeds the container at `http://PUBLIC_HOST:{host_port}/` and opens `WS /session/{token}/lifecycle`.
+4. If the lifecycle WebSocket connection ends, or is not established within `CONTAINER_TIMEOUT`, the session is closed and the container is removed.
 
 When the app shuts down, Mayfly also cleans up any remaining open sessions.
 
@@ -45,37 +48,40 @@ When the app shuts down, Mayfly also cleans up any remaining open sessions.
 
 | Variable | |
 |---|---|
-| `PUBLIC_HOST` | Hostname returned in session URLs (optional — falls back to the request host) |
+| `PUBLIC_HOST` | Browser-reachable host used in Mayfly viewer URLs and container iframe URLs |
+| `PUBLIC_PORT` | Browser-reachable Mayfly port used in session viewer URLs |
 | `DOCKER_IMAGE` | Container image |
-| `DOCKER_PORT` | Port inside the container |
+| `DOCKER_PORT` | Port inside the container; Docker publishes it to a random host port per session |
 | `MAX_CONTAINERS` | Maximum number of sessions |
 | `CONTAINER_MEMORY` | RAM per container |
 | `CONTAINER_CPUS` | CPU allocation per container |
 | `CONTAINER_TMPFS_SIZE` | `/home/user` tmpfs |
 | `CONTAINER_TIMEOUT` | Seconds before aborting if no lifecycle WebSocket connects |
-| `OPENAI_BASE_URL` | OpenAI-compatible API |
-| `OPENAI_MODEL` | Model name |
-| `OPENAI_CONTEXT_SIZE` | Context window |
-| `OPENAI_OUTPUT_SIZE` | Maximum output tokens |
+| `OPENAI_BASE_URL` | OpenAI-compatible API base URL passed into the container |
+| `OPENAI_MODEL` | Model name written to the generated OpenCode config |
+| `OPENAI_CONTEXT_SIZE` | Context window written to the generated OpenCode config |
+| `OPENAI_OUTPUT_SIZE` | Maximum output tokens written to the generated OpenCode config |
 
-Default values are defined in `.env.example`.
+Example values are defined in `.env.example`; all variables are required at runtime.
 
 ## 🐳 Docker-Image
 
-The container image currently installs `opencode-ai` and `OpenChamber` as the web frontend:
+The container image installs `opencode-ai` and `OpenChamber` as the web frontend.
+Both packages are installed from npm with `@latest` during the image build.
 
 | Paket | Version |
 |---|---|
-| `opencode-ai` | `1.14.22` |
-| `@openchamber/web` | `1.9.8` |
+| `opencode-ai` | `latest` |
+| `@openchamber/web` | `latest` |
 
 ## 🛰 API
 
 | | | |
 |---|---|---|
-| `GET`  | `/`                          | Landing page |
+| `GET`  | `/`                          | Landing page — starts a session and redirects to the viewer |
 | `GET`  | `/status`                    | `{open, free, max}` |
-| `POST` | `/session`                   | Start container → `{token, url}` · `503` if the limit is reached or startup fails |
+| `POST` | `/session`                   | Start container → `{url}` where `url` points to the viewer · `503` if the limit is reached or startup fails |
+| `GET`  | `/{host_port}/{token}`       | Viewer: embeds the container in an iframe and keeps the lifecycle WS open |
 | `WS`   | `/session/{token}/lifecycle` | Connection ends ⇒ close session and stop container |
 | `POST` | `/mcp/`                      | MCP endpoint exposing the HTTP API as tools |
 

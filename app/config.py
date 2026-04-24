@@ -10,7 +10,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    public_host: str | None = None
+    public_host: str = Field(min_length=1)
+    public_port: int = Field(ge=1, le=65535)
     #
     docker_image: str = Field(min_length=1)
     docker_port: int = Field(ge=1, le=65535)

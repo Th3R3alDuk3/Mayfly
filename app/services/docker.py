@@ -49,10 +49,10 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
             extra_hosts={"host.docker.internal": "host-gateway"},
             auto_remove=False,
         )
-    except ImageNotFound as e:
-        raise RuntimeError(f"Image not found: {settings.docker_image}") from e
-    except APIError as e:
-        raise RuntimeError(f"Docker error: {e}") from e
+    except ImageNotFound as error:
+        raise RuntimeError(f"Image not found: {settings.docker_image}") from error
+    except APIError as error:
+        raise RuntimeError(f"Docker error: {error}") from error
 
 
 def _wait_ready(host_port: int) -> HTTPResponse:
@@ -122,16 +122,16 @@ class DockerRuntime:
             except NotFound:
                 logger.info("Container already stopped: %s", container_id)
                 return
-            except APIError as e:
-                raise RuntimeError(f"Failed to stop container {container_id}: {e}") from e
+            except APIError as error:
+                raise RuntimeError(f"Failed to stop container {container_id}: {error}") from error
 
             try:
                 container.remove()
             except NotFound:
                 logger.info("Container already removed: %s", container_id)
                 return
-            except APIError as e:
-                raise RuntimeError(f"Failed to remove container {container_id}: {e}") from e
+            except APIError as error:
+                raise RuntimeError(f"Failed to remove container {container_id}: {error}") from error
 
             logger.info("Container removed: %s", container_id)
         finally:
