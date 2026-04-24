@@ -9,77 +9,30 @@
   <title>Mayfly</title>
   <script src="/tailwindcss-browser-4.2.4.js"></script>
 </head>
-<body class="h-full antialiased text-neutral-900 bg-neutral-50 dark:text-neutral-200 dark:bg-neutral-950">
-  <div class="flex flex-col h-full">
-    <header class="flex items-center justify-between shrink-0 h-14 px-5 border-b border-neutral-200
-                   dark:border-neutral-800">
-      <div class="flex items-center gap-2.5">
-        <span class="text-sm font-semibold tracking-wide text-neutral-900 dark:text-neutral-100">
-          Mayfly
-        </span>
+<body class="h-full antialiased text-neutral-900 dark:text-neutral-200
+             bg-neutral-50 dark:bg-neutral-950">
+  <main class="h-full">
+    <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
+      <img src="/logo.png" alt="Mayfly" class="h-56 w-56 select-none" draggable="false">
+      <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
+        Starting OpenCode…
+      </span>
+      <div id="spinner"
+           class="h-9 w-9 rounded-full border-4 border-neutral-300 dark:border-neutral-700
+                  border-t-transparent dark:border-t-transparent animate-spin"></div>
+      <div id="error-box"
+           class="hidden max-w-sm px-5 py-4 rounded-md text-sm text-red-700 dark:text-red-300
+                  bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60">
+        <span id="error-text"></span>
       </div>
-      <div id="status-pill"
-           class="flex h-7 min-w-12 items-center justify-center px-3 text-xs rounded-full border
-                  text-neutral-500 bg-neutral-100
-                  border-neutral-200 dark:text-neutral-400 dark:bg-neutral-900 dark:border-neutral-800"
-           title="Container: offen / maximum">
-        <span id="status-value" class="block text-center leading-none font-mono tabular-nums">
-          –/–
-        </span>
-      </div>
-    </header>
-
-    <main class="flex-1">
-      <div id="loading" class="flex flex-col items-center justify-center gap-5 h-full">
-        <img src="/logo.png" alt="Mayfly" class="w-56 h-56 select-none" draggable="false">
-        <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
-          Starting OpenCode…
-        </span>
-        <div id="spinner"
-             class="w-9 h-9 rounded-full border-4 border-neutral-300 border-t-transparent animate-spin
-                    dark:border-neutral-700 dark:border-t-transparent"></div>
-        <div id="error-box"
-             class="hidden max-w-sm px-5 py-4 text-sm text-red-700 bg-red-50 rounded-md border border-red-200
-                    dark:text-red-300 dark:bg-red-950/40 dark:border-red-900/60">
-          <span id="error-text"></span>
-        </div>
-      </div>
-    </main>
-  </div>
+    </div>
+  </main>
 
   <script>
     const statusText = document.getElementById('status-text');
     const errorBox = document.getElementById('error-box');
     const errorText = document.getElementById('error-text');
     const spinner = document.getElementById('spinner');
-    const statusPill = document.getElementById('status-pill');
-    const statusValue = document.getElementById('status-value');
-
-    const PILL_BASE = 'flex h-7 min-w-12 items-center justify-center px-3 text-xs rounded-full border';
-    const PILL_IDLE = `${PILL_BASE} text-neutral-500 bg-neutral-100 border-neutral-200`
-                    + ' dark:text-neutral-400 dark:bg-neutral-900 dark:border-neutral-800';
-    const PILL_OK   = `${PILL_BASE} text-emerald-700 bg-emerald-50 border-emerald-200`
-                    + ' dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900/60';
-    const PILL_FULL = `${PILL_BASE} text-amber-700 bg-amber-50 border-amber-200`
-                    + ' dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60';
-    const PILL_ERR  = `${PILL_BASE} text-red-700 bg-red-50 border-red-200`
-                    + ' dark:text-red-300 dark:bg-red-950/40 dark:border-red-900/60';
-
-    async function refreshStatus() {
-      try {
-        const res = await fetch('/status', { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { open, max } = await res.json();
-        statusValue.textContent = `${open}/${max}`;
-        statusPill.className = open >= max ? PILL_FULL : open > 0 ? PILL_OK : PILL_IDLE;
-      } catch {
-        statusValue.textContent = '–/–';
-        statusPill.className = PILL_ERR;
-      }
-    }
-
-    refreshStatus();
-    setInterval(refreshStatus, 60_000);
 
     function showError(msg) {
       statusText.textContent = 'Failed to start OpenCode.';

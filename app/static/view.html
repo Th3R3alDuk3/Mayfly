@@ -9,35 +9,36 @@
   <title>Mayfly</title>
   <script src="/tailwindcss-browser-4.2.4.js"></script>
 </head>
-<body class="h-full antialiased text-neutral-900 dark:text-neutral-200 
-  bg-neutral-50 dark:bg-neutral-950">
+<body class="h-full antialiased text-neutral-900 dark:text-neutral-200
+             bg-neutral-50 dark:bg-neutral-950">
   <div class="flex flex-col h-full">
-    <header class="flex items-center justify-between shrink-0 h-14 px-5 
-      border-b border-neutral-200 dark:border-neutral-800">
+    <header class="flex items-center justify-between shrink-0 h-14 px-5
+                   border-b border-neutral-200 dark:border-neutral-800">
       <div class="flex items-center gap-2.5">
+        <img src="/logo.png" alt="" class="h-8 w-8 select-none" draggable="false">
         <span class="text-sm font-semibold tracking-wide text-neutral-900 dark:text-neutral-100">
           Mayfly
         </span>
       </div>
       <div id="status-pill"
-           class="flex h-7 min-w-12 items-center justify-center px-3 rounded-full
-                  text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900
-                  border border-neutral-200 dark:border-neutral-800"
+           class="flex items-center justify-center h-7 min-w-12 px-3 rounded-full
+                  text-xs text-neutral-500 dark:text-neutral-400
+                  bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800"
            title="Container: offen / maximum">
         <span id="status-value" class="block text-center leading-none font-mono tabular-nums">
           &ndash;/&ndash;
         </span>
       </div>
     </header>
+
     <main class="flex-1 min-h-0">
       <iframe src="{{container_url}}"
-              class="block w-full h-full border-0"
+              class="block h-full w-full border-0"
               allow="clipboard-read; clipboard-write"></iframe>
     </main>
   </div>
 
   <script>
-
     const statusValue = document.getElementById('status-value');
 
     async function refreshStatus() {
@@ -56,7 +57,6 @@
 
     refreshStatus();
     setInterval(refreshStatus, 60_000);
-
   </script>
 </body>
 </html>
