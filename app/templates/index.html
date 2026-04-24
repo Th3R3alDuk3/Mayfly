@@ -44,7 +44,7 @@
     async function start() {
       let res;
       try {
-        res = await fetch('/session', { method: 'POST' });
+        res = await fetch('/sessions', { method: 'POST' });
       } catch {
         showError('Server nicht erreichbar.');
         return;

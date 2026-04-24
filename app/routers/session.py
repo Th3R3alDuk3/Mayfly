@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post(
-    path="/session",
+    path="/sessions",
     status_code=201,
     response_model=SessionCreateResponse,
     operation_id="create_mayfly_session",
@@ -35,7 +35,7 @@ async def create_session(request: Request) -> SessionCreateResponse:
 
 
 @router.delete(
-    path="/session/{token}",
+    path="/sessions/{token}",
     status_code=204,
     operation_id="delete_mayfly_session",
     tags=["mayfly", "opencode", "session", "delete"],
@@ -58,7 +58,7 @@ async def delete_session(token: str, request: Request) -> None:
     tags=["mayfly", "opencode", "session", "status"],
     description="Returns the number of open, free, and maximum containers.",
 )
-async def get_status(request: Request) -> SessionStatusResponse:
+async def get_sessions_status(request: Request) -> SessionStatusResponse:
 
     manager: SessionManager = request.app.state.manager
     manager_status = manager.status()
@@ -66,16 +66,17 @@ async def get_status(request: Request) -> SessionStatusResponse:
 
 
 @router.websocket(
-    path="/session/{token}/lifecycle"
+    path="/sessions/{token}/lifecycle"
 )
-async def lifecycle_ws(token: str, websocket: WebSocket) -> None:
+async def ws_session_lifecycle(token: str, websocket: WebSocket) -> None:
 
     manager: SessionManager = websocket.app.state.manager
 
     await websocket.accept()
 
     if not await manager.confirm_connected(token):
-        return await websocket.close(code=4004, reason="unknown token")
+        await websocket.close(code=4004, reason="unknown token")
+        return
 
     logger.info(f"Lifecycle WS connected: {token}")
 

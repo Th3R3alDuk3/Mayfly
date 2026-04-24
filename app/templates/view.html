@@ -53,7 +53,7 @@
     }
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    new WebSocket(`${wsProto}://${location.host}/session/{{token}}/lifecycle`);
+    new WebSocket(`${wsProto}://${location.host}/sessions/{{token}}/lifecycle`);
 
     refreshStatus();
     setInterval(refreshStatus, 60_000);

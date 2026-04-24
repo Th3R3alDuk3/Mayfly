@@ -12,7 +12,7 @@ from app.routers import session, view
 from app.services.session import SessionManager
 
 
-STATIC_DIR = StaticFiles(directory="app/static", html=True)
+STATIC_DIR = StaticFiles(directory="app/static")
 
 
 basicConfig(level=INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
