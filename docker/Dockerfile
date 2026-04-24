@@ -4,11 +4,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
+        ca-certificates build-essential \
+        git ripgrep fd-find \
         python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
 RUN npm install -g opencode-ai@latest @openchamber/web@latest
 
 RUN userdel -r node 2>/dev/null || true \
@@ -21,8 +22,5 @@ USER user
 WORKDIR /home/user
 
 EXPOSE 4096
-
-HEALTHCHECK --interval=5s --timeout=3s --start-period=30s --retries=12 \
-    CMD curl -sf http://localhost:4096/ || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
