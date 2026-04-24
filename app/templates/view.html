@@ -43,7 +43,7 @@
 
     async function refreshStatus() {
       try {
-        const res = await fetch('/status', { cache: 'no-store' });
+        const res = await fetch('/sessions/status', { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { open, max } = await res.json();
         statusValue.textContent = `${open}/${max}`;

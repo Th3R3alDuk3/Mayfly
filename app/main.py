@@ -8,7 +8,7 @@ from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
 
 from app.config import get_settings
-from app.routers import lifecycle, session
+from app.routers import session, view
 from app.services.session import SessionManager
 
 
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="Mayfly")
 app.include_router(session.router)
-app.include_router(lifecycle.router)
+app.include_router(view.router)
 
 mcp = FastMCP.from_fastapi(app=app, name="Mayfly MCP")
 mcp_app = mcp.http_app(path="/", transport="streamable-http")

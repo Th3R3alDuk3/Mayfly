@@ -6,83 +6,61 @@
 
 ![Python](https://img.shields.io/badge/python-3.13+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
-![Docker](https://img.shields.io/badge/Docker-7.0+-2496ED)
+![Docker SDK](https://img.shields.io/badge/Docker%20SDK-7.0+-2496ED)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> Ephemeral `OpenCode` containers per browser session, with `OpenChamber` as the frontend. Close the tab and the container is gone.
+> Mayfly runs temporary browser-based `OpenCode`/`OpenChamber` sessions in isolated Docker containers.
 
-## ⚡ Setup
+## Overview
+
+Mayfly is a small FastAPI service for disposable coding workspaces. It starts one container per browser session and removes it again when the session is no longer active.
+
+The service also exposes a small HTTP API and an MCP endpoint for external clients.
+
+## Setup
 
 ```bash
 cp .env.example .env
 ```
+
 ```bash
 uv sync
 ```
+
 ```bash
 docker build -t mayfly:0.1.0 docker/
 ```
 
-The build tag must match `DOCKER_IMAGE` in `.env`.
+The Docker tag must match `DOCKER_IMAGE` in `.env`.
 
-## 🚀 Start
+## Start
 
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8123
 ```
 
-↻ Auto reload: add `--reload`.
+For local development:
 
-`PUBLIC_PORT` must match the browser-reachable Mayfly port, unless a reverse proxy maps another public port to Uvicorn. For local development on `8123`, set `PUBLIC_PORT=8123` in `.env` and start Uvicorn with `--port 8123`.
+```bash
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8123 --reload
+```
 
-## ↺ Flow
+## Configuration
 
-1. `GET /` serves the static landing page, which polls `GET /status` and calls `POST /session`.
-2. `POST /session` starts a dedicated OpenCode/OpenChamber container and returns a viewer URL: `http://PUBLIC_HOST:PUBLIC_PORT/{host_port}/{token}`.
-3. The viewer route `GET /{host_port}/{token}` embeds the container at `http://PUBLIC_HOST:{host_port}/` and opens `WS /session/{token}/lifecycle`.
-4. If the lifecycle WebSocket connection ends, or is not established within `CONTAINER_TIMEOUT`, the session is closed and the container is removed.
+Runtime settings live in `.env`. Use `.env.example` as the template and adjust host, port, Docker, container limits, and model API settings as needed.
 
-When the app shuts down, Mayfly also cleans up any remaining open sessions.
+`PUBLIC_PORT` should match the browser-reachable Mayfly port.
 
-## ⚙ Configuration (`.env`)
+## API
 
-| Variable | |
+Mayfly exposes a small API:
+
+| Method | Path |
 |---|---|
-| `PUBLIC_HOST` | Browser-reachable host used in Mayfly viewer URLs and container iframe URLs |
-| `PUBLIC_PORT` | Browser-reachable Mayfly port used in session viewer URLs |
-| `DOCKER_IMAGE` | Container image |
-| `DOCKER_PORT` | Port inside the container; Docker publishes it to a random host port per session |
-| `MAX_CONTAINERS` | Maximum number of sessions |
-| `CONTAINER_MEMORY` | RAM per container |
-| `CONTAINER_CPUS` | CPU allocation per container |
-| `CONTAINER_TMPFS_SIZE` | `/home/user` tmpfs |
-| `CONTAINER_TIMEOUT` | Seconds before aborting if no lifecycle WebSocket connects |
-| `OPENAI_BASE_URL` | OpenAI-compatible API base URL passed into the container |
-| `OPENAI_MODEL` | Model name written to the generated OpenCode config |
-| `OPENAI_CONTEXT_SIZE` | Context window written to the generated OpenCode config |
-| `OPENAI_OUTPUT_SIZE` | Maximum output tokens written to the generated OpenCode config |
-
-Example values are defined in `.env.example`; all variables are required at runtime.
-
-## 🐳 Docker-Image
-
-The container image installs `opencode-ai` and `OpenChamber` as the web frontend.
-Both packages are installed from npm with `@latest` during the image build.
-
-| Paket | Version |
-|---|---|
-| `opencode-ai` | `latest` |
-| `@openchamber/web` | `latest` |
-
-## 🛰 API
-
-| | | |
-|---|---|---|
-| `GET`  | `/`                          | Landing page — starts a session and redirects to the viewer |
-| `GET`  | `/status`                    | `{open, free, max}` |
-| `POST` | `/session`                   | Start container → `{url}` where `url` points to the viewer · `503` if the limit is reached or startup fails |
-| `GET`  | `/{host_port}/{token}`       | Viewer: embeds the container in an iframe and keeps the lifecycle WS open |
-| `WS`   | `/session/{token}/lifecycle` | Connection ends ⇒ close session and stop container |
-| `POST` | `/mcp/`                      | MCP endpoint exposing the HTTP API as tools |
-
-The MCP server is generated from the FastAPI OpenAPI schema via FastMCP. Use `/mcp/` as the canonical endpoint; The current tool names are `get_mayfly_status` and `create_mayfly_session`.
+| `GET` | `/` |
+| `POST` | `/session` |
+| `DELETE` | `/session/{token}` |
+| `GET` | `/sessions/status` |
+| `GET` | `/view/{token}` |
+| `WS` | `/session/{token}/lifecycle` |
+| `POST` | `/mcp/` |
