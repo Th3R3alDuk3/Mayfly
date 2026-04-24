@@ -6,9 +6,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.routers import sessions, view
+from app.routers.view import http_exception_handler
 from app.services.session import SessionManager
 
 
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="Mayfly")
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.include_router(sessions.router)
 app.include_router(view.router)
 

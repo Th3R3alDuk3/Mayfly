@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import SettingsDep
 from app.services.session import SessionManager
@@ -29,7 +30,11 @@ async def index(request: Request) -> HTMLResponse:
     include_in_schema=False,
     response_class=HTMLResponse,
 )
-async def view_session(token: str, request: Request, settings: SettingsDep) -> HTMLResponse:
+async def view_session(
+    token: str, 
+    request: Request, 
+    settings: SettingsDep,
+) -> HTMLResponse:
 
     manager: SessionManager = request.app.state.manager
 
@@ -42,4 +47,23 @@ async def view_session(token: str, request: Request, settings: SettingsDep) -> H
         request=request,
         name="view.html",
         context={"container_url": container_url, "token": token},
+    )
+
+
+async def http_exception_handler(
+    request: Request, 
+    exception: StarletteHTTPException,
+) -> Response:
+
+    if "text/html" in request.headers.get("accept", ""):
+        return templates.TemplateResponse(
+            request=request,
+            name="error.html",
+            context={"status_code": exception.status_code, "detail": exception.detail},
+            status_code=exception.status_code,
+        )
+
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"detail": exception.detail},
     )

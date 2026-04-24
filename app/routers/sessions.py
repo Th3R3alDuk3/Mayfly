@@ -19,7 +19,10 @@ router = APIRouter()
     tags=["sessions"],
     description="Starts a session with its own Mayfly web container.",
 )
-async def create_session(request: Request, settings: SettingsDep) -> SessionCreateResponse:
+async def create_session(
+    request: Request, 
+    settings: SettingsDep,
+) -> SessionCreateResponse:
 
     manager: SessionManager = request.app.state.manager
 
@@ -40,7 +43,10 @@ async def create_session(request: Request, settings: SettingsDep) -> SessionCrea
     tags=["sessions"],
     description="Stops the container associated with the given session token.",
 )
-async def delete_session(token: str, request: Request) -> None:
+async def delete_session(
+    token: str, 
+    request: Request,
+) -> None:
 
     manager: SessionManager = request.app.state.manager
 
@@ -57,7 +63,9 @@ async def delete_session(token: str, request: Request) -> None:
     tags=["sessions"],
     description="Returns the number of open, free, and maximum containers.",
 )
-async def get_sessions_status(request: Request) -> SessionStatusResponse:
+async def get_sessions_status(
+    request: Request
+) -> SessionStatusResponse:
 
     manager: SessionManager = request.app.state.manager
     manager_status = manager.status()
@@ -67,7 +75,10 @@ async def get_sessions_status(request: Request) -> SessionStatusResponse:
 @router.websocket(
     path="/sessions/{token}/lifecycle"
 )
-async def ws_session_lifecycle(token: str, websocket: WebSocket) -> None:
+async def ws_session_lifecycle(
+    token: str, 
+    websocket: WebSocket,
+) -> None:
 
     manager: SessionManager = websocket.app.state.manager
 
