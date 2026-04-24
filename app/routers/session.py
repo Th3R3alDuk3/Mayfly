@@ -1,6 +1,7 @@
 from logging import getLogger
 from fastapi import APIRouter, HTTPException, Request
 
+from app.config import get_settings
 from app.models.session import SessionCreateResponse, SessionStatusResponse
 from app.services.session import SessionManager
 
@@ -25,9 +26,10 @@ async def create_session(request: Request) -> SessionCreateResponse:
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
+    hostname = get_settings().public_host or request.url.hostname
     return SessionCreateResponse(
         token=session.token,
-        url=f"http://{request.url.hostname}:{session.container_info.port}/",
+        url=f"http://{hostname}:{session.container_info.port}/",
     )
 
 

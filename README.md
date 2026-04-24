@@ -45,6 +45,7 @@ When the app shuts down, Mayfly also cleans up any remaining open sessions.
 
 | Variable | |
 |---|---|
+| `PUBLIC_HOST` | Hostname returned in session URLs (optional — falls back to the request host) |
 | `DOCKER_IMAGE` | Container image |
 | `DOCKER_PORT` | Port inside the container |
 | `MAX_CONTAINERS` | Maximum number of sessions |

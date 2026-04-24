@@ -10,13 +10,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    public_host: str | None = None
+    #
     docker_image: str = Field(min_length=1)
     docker_port: int = Field(ge=1, le=65535)
+    #
     max_containers: int = Field(gt=0)
     container_memory: str = Field(min_length=1)
     container_cpus: float = Field(gt=0)
     container_tmpfs_size: str = Field(min_length=1)
     container_timeout: float = Field(gt=0)
+    #
     openai_base_url: str = Field(min_length=1)
     openai_model: str = Field(min_length=1)
     openai_context_size: int = Field(gt=0)
