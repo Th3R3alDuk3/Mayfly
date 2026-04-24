@@ -1,9 +1,7 @@
 from asyncio import to_thread
-from collections.abc import Iterator
 from http.client import HTTPResponse
 from logging import getLogger
 from time import monotonic, sleep
-from typing import Any
 from urllib.request import urlopen
 
 from docker import from_env
@@ -17,9 +15,9 @@ from app.models.docker import ContainerInfo
 
 logger = getLogger(__name__)
 
+
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL = 3
-_CONTAINER_HOSTNAME = "mayfly"
 
 
 def _run_container(client: DockerClient, session_id: str, settings: Settings) -> Container:
@@ -27,8 +25,8 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
         return client.containers.run(
             settings.docker_image,
             detach=True,
-            name=f"opencode-{session_id}",
-            hostname=_CONTAINER_HOSTNAME,
+            name=f"mayfly-{session_id}",
+            hostname="mayfly",
             ports={f"{settings.docker_port}/tcp": None},
             mem_limit=settings.container_memory,
             nano_cpus=int(settings.container_cpus * 1_000_000_000),
@@ -57,48 +55,6 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
         raise RuntimeError(f"Docker error: {e}") from e
 
 
-def _host_port(container: Container, docker_port: int, session_id: str) -> int:
-    container.reload()
-    port_bindings = container.ports.get(f"{docker_port}/tcp") or []
-    if not port_bindings:
-        raise RuntimeError(f"Container {session_id}: no port binding found")
-    return int(port_bindings[0]["HostPort"])
-
-
-def _cleanup_failed_start(container: Container) -> None:
-    try:
-        container.stop(timeout=3)
-        container.remove()
-    except Exception:
-        logger.exception("Cleanup failed for container %s", container.short_id)
-
-
-def _get_container(client: DockerClient, container_id: str) -> Container | None:
-    try:
-        return client.containers.get(container_id)
-    except NotFound:
-        logger.info("Container already gone: %s", container_id)
-        return None
-
-
-def _stop_and_remove_container(container: Container, container_id: str) -> None:
-    try:
-        container.stop(timeout=5)
-    except NotFound:
-        logger.info("Container already stopped: %s", container_id)
-        return
-    except APIError as e:
-        raise RuntimeError(f"Failed to stop container {container_id}: {e}") from e
-
-    try:
-        container.remove()
-    except NotFound:
-        logger.info("Container already removed: %s", container_id)
-        return
-    except APIError as e:
-        raise RuntimeError(f"Failed to remove container {container_id}: {e}") from e
-
-
 def _wait_ready(host_port: int) -> HTTPResponse:
     url = f"http://localhost:{host_port}/"
     deadline = monotonic() + _HEALTH_TIMEOUT
@@ -113,7 +69,6 @@ def _wait_ready(host_port: int) -> HTTPResponse:
 class DockerRuntime:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._events_client = from_env()
 
     async def start_session_container(self, session_id: str) -> ContainerInfo:
         return await to_thread(self._start_session_container, session_id)
@@ -124,7 +79,13 @@ class DockerRuntime:
 
         try:
             container = _run_container(client, session_id, self._settings)
-            host_port = _host_port(container, self._settings.docker_port, session_id)
+
+            container.reload()
+            port_bindings = container.ports.get(f"{self._settings.docker_port}/tcp") or []
+            if not port_bindings:
+                raise RuntimeError(f"Container {session_id}: no port binding found")
+            host_port = int(port_bindings[0]["HostPort"])
+
             logger.info(
                 "Container started: %s on port %d — waiting for ready",
                 container.short_id,
@@ -135,7 +96,11 @@ class DockerRuntime:
             return ContainerInfo(id=container.id, port=host_port)
         except Exception:
             if container is not None:
-                _cleanup_failed_start(container)
+                try:
+                    container.stop(timeout=3)
+                    container.remove()
+                except Exception:
+                    logger.exception("Cleanup failed for container %s", container.short_id)
             raise
         finally:
             client.close()
@@ -146,17 +111,28 @@ class DockerRuntime:
     def _stop_container(self, container_id: str) -> None:
         client = from_env()
         try:
-            container = _get_container(client, container_id)
-            if container is None:
+            try:
+                container = client.containers.get(container_id)
+            except NotFound:
+                logger.info("Container already gone: %s", container_id)
                 return
 
-            _stop_and_remove_container(container, container_id)
+            try:
+                container.stop(timeout=5)
+            except NotFound:
+                logger.info("Container already stopped: %s", container_id)
+                return
+            except APIError as e:
+                raise RuntimeError(f"Failed to stop container {container_id}: {e}") from e
+
+            try:
+                container.remove()
+            except NotFound:
+                logger.info("Container already removed: %s", container_id)
+                return
+            except APIError as e:
+                raise RuntimeError(f"Failed to remove container {container_id}: {e}") from e
+
             logger.info("Container removed: %s", container_id)
         finally:
             client.close()
-
-    def iter_container_events(self) -> Iterator[dict[str, Any]]:
-        return self._events_client.events(decode=True, filters={"type": "container"})
-
-    def close(self) -> None:
-        self._events_client.close()
