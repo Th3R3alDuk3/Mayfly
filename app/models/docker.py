@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
 
-class ContainerInfo(BaseModel):
+class Container(BaseModel):
     id: str
-    port: int
+    name: str

@@ -1,7 +1,5 @@
-from pathlib import Path
-
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -25,28 +23,55 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
+@router.post(
+    path="/view",
+    include_in_schema=False,
+)
+async def create_view_session(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> RedirectResponse:
+
+    manager: SessionManager = request.app.state.manager
+
+    try:
+        session = await manager.reserve()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    background_tasks.add_task(manager.start, session.token)
+    return RedirectResponse(
+        url=f"/view/{session.token}",
+        status_code=303,
+        background=background_tasks,
+    )
+
+
 @router.get(
     path="/view/{token}",
     include_in_schema=False,
     response_class=HTMLResponse,
 )
 async def view_session(
-    token: str, 
-    request: Request, 
+    token: str,
+    request: Request,
     settings: SettingsDep,
 ) -> HTMLResponse:
 
     manager: SessionManager = request.app.state.manager
 
     session = manager.get(token)
-    if session is None or session.container_info is None:
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    container_url = f"http://{settings.public_host}:{session.container_info.port}/"
+    container_url = f"https://{token}.{settings.public_domain}:{settings.public_port}/"
     return templates.TemplateResponse(
         request=request,
         name="view.html",
-        context={"container_url": container_url, "token": token},
+        context={
+            "container_url": container_url,
+            "token": token,
+        },
     )
 
 

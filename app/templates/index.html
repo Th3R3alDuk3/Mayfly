@@ -1,66 +1,20 @@
-<!DOCTYPE html>
-<html lang="de" class="h-full">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light dark">
-  <link rel="icon" type="image/png" href="/logo.png">
-  <link rel="apple-touch-icon" href="/logo.png">
-  <title>Mayfly</title>
-  <script src="/tailwindcss-browser-4.2.4.js"></script>
-</head>
-<body class="h-full antialiased text-neutral-900 dark:text-neutral-200
-             bg-neutral-50 dark:bg-neutral-950">
-  <main class="h-full">
-    <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
-      <img src="/logo.png" alt="Mayfly" class="h-56 w-56 select-none" draggable="false">
-      <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
-        Starting Mayfly…
-      </span>
-      <div id="spinner"
-           class="h-9 w-9 rounded-full border-4 border-neutral-300 dark:border-neutral-700
-                  border-t-transparent dark:border-t-transparent animate-spin"></div>
-      <div id="error-box"
-           class="hidden max-w-sm px-5 py-4 rounded-md text-sm text-red-700 dark:text-red-300
-                  bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60">
-        <span id="error-text"></span>
-      </div>
-    </div>
-  </main>
+{% extends "base.html" %}
 
-  <script>
-    const statusText = document.getElementById('status-text');
-    const errorBox = document.getElementById('error-box');
-    const errorText = document.getElementById('error-text');
-    const spinner = document.getElementById('spinner');
+{% block content %}
+<main class="h-full">
+  <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
+    <img src="/logo.png" alt="Mayfly" class="h-56 w-56">
+    <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
+      Starting Mayfly…
+    </span>
+    {% include "_spinner.html" %}
+    <form id="start-form" method="post" action="/view" class="hidden"></form>
+  </div>
+</main>
+{% endblock %}
 
-    function showError(msg) {
-      statusText.textContent = 'Failed to start Mayfly.';
-      errorText.textContent = msg;
-      errorBox.classList.remove('hidden');
-      spinner.classList.add('hidden');
-    }
-
-    async function start() {
-      let res;
-      try {
-        res = await fetch('/sessions', { method: 'POST' });
-      } catch {
-        showError('Server nicht erreichbar.');
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        showError(data.detail ?? `Fehler ${res.status}`);
-        return;
-      }
-
-      const { url } = await res.json();
-      window.location.href = url;
-    }
-
-    start();
-  </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+  document.getElementById('start-form').submit();
+</script>
+{% endblock %}

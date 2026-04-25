@@ -1,7 +1,6 @@
 from asyncio import (
     CancelledError,
     Lock,
-    Task,
     create_task,
     gather,
     sleep,
@@ -9,96 +8,106 @@ from asyncio import (
 from logging import getLogger
 
 from app.config import Settings
-from app.models.session import ManagedSession, Session
+from app.models.session import ConnectResult, Session, SessionEntry, SessionState
 from app.services.docker import DockerRuntime
 
 
 logger = getLogger(__name__)
 
 
-def _cancel_task(task: Task[None] | None) -> None:
-    if task:
-        task.cancel()
-
-
 class SessionManager:
-    def __init__(self, settings: Settings, runtime: DockerRuntime | None = None) -> None:
+    def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._runtime = runtime or DockerRuntime(settings)
-        self._sessions: dict[str, ManagedSession] = {}
+        self._runtime = DockerRuntime(settings)
+        self._sessions: dict[str, SessionEntry] = {}
         self._lock = Lock()
 
-    async def create(self) -> Session:
-        entry = ManagedSession(session=Session())
+    async def reserve(self, *, start_cleanup: bool = True) -> Session:
+        entry = SessionEntry(session=Session())
         token = entry.session.token
 
         async with self._lock:
             if len(self._sessions) >= self._settings.max_containers:
                 raise RuntimeError("Max container limit reached")
             self._sessions[token] = entry
+            if start_cleanup:
+                entry.cleanup_task = create_task(
+                    self._close_after_idle(token, self._settings.container_start_timeout)
+                )
 
-        try:
-            entry.session.container_info = await self._runtime.start_session_container(token)
-        except Exception:
-            async with self._lock:
-                self._sessions.pop(token, None)
-            raise
-
-        entry.abandon_task = create_task(self._abandon_timeout(token))
         return entry.session
 
-    async def _abandon_timeout(self, token: str) -> None:
+    async def create(self) -> Session:
+        session = await self.reserve(start_cleanup=False)
         try:
-            await sleep(self._settings.container_timeout)
-        except CancelledError:
+            await self.start(session.token, remove_on_error=True)
+        except Exception as error:
+            raise RuntimeError(str(error)) from error
+
+        async with self._lock:
+            entry = self._sessions.get(session.token)
+            if entry is None or entry.session.state != SessionState.READY:
+                raise RuntimeError("Session was closed during start")
+            if entry.cleanup_task is None and not entry.client_connected:
+                entry.cleanup_task = create_task(
+                    self._close_after_idle(session.token, self._settings.container_start_timeout)
+                )
+
+        return session
+
+    async def start(self, token: str, remove_on_error: bool = False) -> None:
+        async with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None or entry.session.state != SessionState.STARTING:
+                return
+            if entry.start_task is None:
+                entry.start_task = create_task(
+                    self._start_session_container(token, entry, remove_on_error)
+                )
+            start_task = entry.start_task
+
+        await start_task
+
+    async def confirm_connected(self, token: str) -> ConnectResult:
+        async with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None or entry.session.state == SessionState.CLOSING:
+                return ConnectResult.UNKNOWN
+            if entry.client_connected:
+                return ConnectResult.BUSY
+
+            entry.client_connected = True
+            cleanup_task = entry.cleanup_task
+            entry.cleanup_task = None
+
+        if cleanup_task:
+            cleanup_task.cancel()
+        return ConnectResult.OK
+
+    async def schedule_idle_close(self, token: str) -> None:
+        async with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None or entry.session.state == SessionState.CLOSING:
+                return
+            entry.client_connected = False
+            if entry.cleanup_task is not None:
+                return
+            entry.cleanup_task = create_task(
+                self._close_after_idle(token, self._settings.container_disconnect_grace)
+            )
+
+    async def wait_ready(self, token: str) -> Session | None:
+        entry = self._sessions.get(token)
+        if entry is None:
+            return None
+        await entry.ready_event.wait()
+        return entry.session
+
+    async def wait_closing(self, token: str) -> None:
+        entry = self._sessions.get(token)
+        if entry is None:
             return
-
-        async with self._lock:
-            entry = self._sessions.get(token)
-            if entry is None:
-                return
-            entry.abandon_task = None
-
-        logger.warning("Session %s abandoned — no lifecycle WS connected, closing", token)
-        await self.close(token)
-
-    async def confirm_connected(self, token: str) -> bool:
-        async with self._lock:
-            entry = self._sessions.get(token)
-            if entry is None or entry.close_task is not None:
-                return False
-
-            abandon_task = entry.abandon_task
-            entry.abandon_task = None
-
-        _cancel_task(abandon_task)
-        return True
-
-    async def close(self, token: str) -> None:
-        async with self._lock:
-            entry = self._sessions.get(token)
-            if entry is None:
-                return
-
-            if entry.close_task is None:
-                entry.close_task = create_task(self._close_session(token, entry))
-
-            close_task = entry.close_task
-
-        await close_task
-
-    async def _close_session(self, token: str, entry: ManagedSession) -> None:
-        _cancel_task(entry.abandon_task)
-        entry.abandon_task = None
-
-        try:
-            if entry.session.container_info:
-                await self._runtime.stop_container(entry.session.container_info.id)
-        except Exception:
-            logger.exception("Failed to clean up session %s", token)
-        finally:
-            async with self._lock:
-                self._sessions.pop(token, None)
+        await entry.close_event.wait()
 
     def get(self, token: str) -> Session | None:
         entry = self._sessions.get(token)
@@ -107,16 +116,119 @@ class SessionManager:
         return entry.session
 
     def status(self) -> dict[str, int]:
-        open_count = len(self._sessions)
+        active = len(self._sessions)
         return {
-            "open": open_count,
-            "free": max(0, self._settings.max_containers - open_count),
-            "max": self._settings.max_containers,
+            "active": active,
+            "available": max(0, self._settings.max_containers - active),
+            "limit": self._settings.max_containers,
         }
+
+    async def close(self, token: str, *, raise_errors: bool = False) -> None:
+        async with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None:
+                return
+
+            if entry.close_task is None:
+                entry.cleanup_error = None
+                entry.client_connected = False
+                entry.session.state = SessionState.CLOSING
+                entry.ready_event.set()
+                entry.close_event.set()
+                entry.close_task = create_task(self._close_session(token, entry))
+
+            close_task = entry.close_task
+
+        await close_task
+        if raise_errors and entry.cleanup_error is not None:
+            raise RuntimeError(f"Failed to clean up session {token}") from entry.cleanup_error
 
     async def close_all(self) -> None:
         async with self._lock:
             tokens = list(self._sessions.keys())
 
-        logger.info("Shutting down %d session(s)", len(tokens))
+        logger.info(f"Shutting down {len(tokens)} session(s)")
         await gather(*(self.close(t) for t in tokens))
+        self._runtime.close()
+
+    async def cleanup_stale_containers(self) -> None:
+        await self._runtime.remove_managed_containers()
+
+    async def _start_session_container(
+        self,
+        token: str,
+        entry: SessionEntry,
+        remove_on_error: bool,
+    ) -> None:
+        try:
+            container = await self._runtime.start_session_container(token)
+        except Exception as error:
+            logger.exception(f"Failed to start session {token}")
+            async with self._lock:
+                current = self._sessions.get(token)
+                if current is entry:
+                    current.session.state = SessionState.ERROR
+                    current.session.error = str(error)
+                    current.start_task = None
+                    current.ready_event.set()
+                    if remove_on_error:
+                        if current.cleanup_task is not None:
+                            current.cleanup_task.cancel()
+                        self._sessions.pop(token, None)
+            raise
+
+        stop_container_id: str | None = None
+        async with self._lock:
+            current = self._sessions.get(token)
+            if current is None or current is not entry or current.session.state == SessionState.CLOSING:
+                stop_container_id = container.id
+            else:
+                current.session.state = SessionState.READY
+                current.session.container = container
+                current.start_task = None
+                current.ready_event.set()
+
+        if stop_container_id is not None:
+            await self._runtime.stop_container(stop_container_id)
+
+    async def _close_after_idle(self, token: str, delay: float) -> None:
+        try:
+            await sleep(delay)
+        except CancelledError:
+            return
+
+        async with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None:
+                return
+            entry.cleanup_task = None
+            if entry.client_connected:
+                return
+
+        logger.warning(f"Session {token} idle for {delay}s — closing")
+        await self.close(token)
+
+    async def _close_session(self, token: str, entry: SessionEntry) -> None:
+        if entry.cleanup_task:
+            entry.cleanup_task.cancel()
+        entry.cleanup_task = None
+
+        cleanup_succeeded = False
+        try:
+            if entry.start_task is not None:
+                try:
+                    await entry.start_task
+                except Exception:
+                    pass
+            if entry.session.container:
+                await self._runtime.stop_container(entry.session.container.id)
+            cleanup_succeeded = True
+        except Exception as error:
+            entry.cleanup_error = error
+            logger.exception(f"Failed to clean up session {token}")
+
+        async with self._lock:
+            if cleanup_succeeded:
+                self._sessions.pop(token, None)
+            else:
+                entry.close_task = None

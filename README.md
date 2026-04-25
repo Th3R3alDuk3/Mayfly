@@ -9,58 +9,26 @@
 ![Docker SDK](https://img.shields.io/badge/Docker%20SDK-7.0+-2496ED)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> Mayfly runs temporary browser-based `OpenCode`/`OpenChamber` sessions in isolated Docker containers.
+> Disposable browser-based coding sessions in isolated Docker containers.
 
-## Overview
+## What
 
-Mayfly is a small FastAPI service for disposable coding workspaces. It starts one container per browser session and removes it again when the session is no longer active.
+A small FastAPI service that hands out short-lived `OpenCode` / `OpenChamber` workspaces. Each session gets its own container and its own subdomain — and disappears when nobody's looking.
 
-The service also exposes a small HTTP API and an MCP endpoint for external clients.
+Caddy fronts everything for TLS and per-session subdomain routing.
 
-## Setup
+## Run
 
 ```bash
 cp .env.example .env
-```
-
-```bash
 uv sync
+docker compose --profile build build
+docker compose up -d
+uv run uvicorn app.main:app --port 8123
 ```
 
-```bash
-docker build -t mayfly:0.1.0 docker/
-```
+Then open `https://mayfly.localhost:8443/`.
 
-The Docker tag must match `DOCKER_IMAGE` in `.env`.
+## More
 
-## Start
-
-```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8123
-```
-
-For local development:
-
-```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8123 --reload
-```
-
-## Configuration
-
-Runtime settings live in `.env`. Use `.env.example` as the template and adjust host, port, Docker, container limits, and model API settings as needed.
-
-`PUBLIC_PORT` should match the browser-reachable Mayfly port.
-
-## API
-
-Mayfly exposes a small API:
-
-| Method | Path |
-|---|---|
-| `GET` | `/` |
-| `POST` | `/sessions` |
-| `DELETE` | `/sessions/{token}` |
-| `GET` | `/sessions/status` |
-| `GET` | `/view/{token}` |
-| `WS` | `/sessions/{token}/lifecycle` |
-| `POST` | `/mcp/` |
+Configuration lives in `.env`. API surface is small — OpenAPI at `/docs`, MCP at `/mcp/`.

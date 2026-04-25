@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="apple-touch-icon" href="/logo.png">
+  <title>{% block title %}Mayfly{% endblock %}</title>
+  <script src="/tailwindcss-browser-4.2.4.js"></script>
+</head>
+<body class="h-full antialiased text-neutral-900 dark:text-neutral-200
+             bg-neutral-50 dark:bg-neutral-950">
+  {% block content %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

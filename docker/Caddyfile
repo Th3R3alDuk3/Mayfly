@@ -1,0 +1,22 @@
+{
+	auto_https disable_redirects
+}
+
+{$PUBLIC_DOMAIN:mayfly.localhost} {
+	tls internal
+	log
+	reverse_proxy {$MAYFLY_HOST:host.docker.internal}:{$MAYFLY_PORT:8123}
+}
+
+*.{$PUBLIC_DOMAIN:mayfly.localhost} {
+	tls internal
+
+	@session header_regexp host Host ^(?P<token>[a-f0-9]{48})\.
+	handle @session {
+		reverse_proxy mayfly-{re.host.token}:{$DOCKER_PORT:4096}
+	}
+
+	handle {
+		respond "Bad subdomain" 400
+	}
+}

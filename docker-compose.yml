@@ -1,0 +1,31 @@
+services:
+  mayfly-image:
+    profiles: ["build"]
+    build:
+      context: ./docker
+    image: ${DOCKER_IMAGE}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+      MAYFLY_HOST: host.docker.internal
+      MAYFLY_PORT: ${MAYFLY_PORT}
+      DOCKER_PORT: ${DOCKER_PORT}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks:
+      - mayfly-net
+
+networks:
+  mayfly-net:
+    name: mayfly-net
+
+volumes:
+  caddy-data:
