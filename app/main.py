@@ -25,7 +25,7 @@ STATIC_DIR = StaticFiles(directory="app/static")
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
     logger.info(
-        f"Mayfly up — listen :{settings.mayfly_port}, "
+        f"Mayfly up — listen :{settings.app_port}, "
         f"public https://{settings.public_domain}:{settings.public_port}"
     )
     manager = SessionManager(settings)

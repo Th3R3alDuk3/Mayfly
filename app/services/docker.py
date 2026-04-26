@@ -45,10 +45,10 @@ class DockerRuntime:
         try:
             container = _run_container(self._client, session_id, self._settings)
             name = f"mayfly-{session_id}"
-            ip = _container_ip(container, self._settings.docker_network)
+            ip = _container_ip(container, self._settings.mayfly_network)
 
             logger.info(f"Container started: {container.short_id} ({name} @ {ip}) — waiting for ready")
-            _wait_ready(ip, self._settings.docker_port)
+            _wait_ready(ip, self._settings.mayfly_port)
             logger.info(f"Container ready: {container.short_id} ({name})")
             return Container(id=container.id, name=name)
         except Exception:
@@ -119,15 +119,15 @@ class DockerRuntime:
 def _run_container(client: DockerClient, session_id: str, settings: Settings) -> DockerContainer:
     try:
         return client.containers.run(
-            settings.docker_image,
+            settings.mayfly_image,
             detach=True,
             name=f"mayfly-{session_id}",
             hostname="mayfly",
-            network=settings.docker_network,
-            mem_limit=settings.container_memory,
-            nano_cpus=int(settings.container_cpus * 1_000_000_000),
+            network=settings.mayfly_network,
+            mem_limit=settings.mayfly_memory,
+            nano_cpus=int(settings.mayfly_cpus * 1_000_000_000),
             tmpfs={
-                "/home/user": f"size={settings.container_tmpfs_size},uid=1000,exec",
+                "/home/user": f"size={settings.mayfly_tmpfs_size},uid=1000,exec",
                 "/tmp": "size=64m,uid=1000,exec",
             },
             read_only=True,
@@ -136,18 +136,18 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
             pids_limit=256,
             user="1000:1000",
             environment={
-                "DOCKER_PORT": settings.docker_port,
+                "MAYFLY_PORT": settings.mayfly_port,
                 "OPENAI_BASE_URL": settings.openai_base_url,
                 "OPENAI_MODEL": settings.openai_model,
-                "OPENAI_CONTEXT_SIZE": settings.openai_context_size,
-                "OPENAI_OUTPUT_SIZE": settings.openai_output_size,
+                "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
+                "OPENAI_OUTPUT_TOKENS": settings.openai_output_tokens,
             },
             extra_hosts={"host.docker.internal": "host-gateway"},
             auto_remove=False,
             labels={_MANAGED_LABEL: _MANAGED_LABEL_VALUE},
         )
     except ImageNotFound as error:
-        raise RuntimeError(f"Image not found: {settings.docker_image}") from error
+        raise RuntimeError(f"Image not found: {settings.mayfly_image}") from error
     except APIError as error:
         raise RuntimeError(f"Docker error: {error}") from error
 

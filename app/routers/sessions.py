@@ -40,7 +40,7 @@ async def get_sessions_status(
     response_model=SessionCreateResponse,
     operation_id="create_mayfly_session",
     tags=["sessions"],
-    description="Starts a session with its own Mayfly web container.",
+    description="Starts a session with its own Mayfly sandbox.",
 )
 async def create_session(
     request: Request,
@@ -64,7 +64,7 @@ async def create_session(
     status_code=204,
     operation_id="delete_mayfly_session",
     tags=["sessions"],
-    description="Stops the container associated with the given session token.",
+    description="Stops the Mayfly sandbox associated with the given session token.",
 )
 async def delete_session(
     token: str,

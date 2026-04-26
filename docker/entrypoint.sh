@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-: "${OPENAI_BASE_URL}"
-: "${OPENAI_MODEL}"
-: "${OPENAI_CONTEXT_SIZE}"
-: "${OPENAI_OUTPUT_SIZE}"
-: "${DOCKER_PORT}"
+: "${OPENAI_BASE_URL:?}"
+: "${OPENAI_MODEL:?}"
+: "${OPENAI_CONTEXT_TOKENS:?}"
+: "${OPENAI_OUTPUT_TOKENS:?}"
+: "${MAYFLY_PORT:?}"
 
 CONFIG_DIR="${HOME}/.config/opencode"
 mkdir -p "${CONFIG_DIR}"
@@ -24,8 +24,8 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
       "models": {
         "${OPENAI_MODEL}": {
           "limit": {
-            "context": ${OPENAI_CONTEXT_SIZE},
-            "output": ${OPENAI_OUTPUT_SIZE}
+            "context": ${OPENAI_CONTEXT_TOKENS},
+            "output": ${OPENAI_OUTPUT_TOKENS}
           },
           "variants": {
             "think": {
@@ -48,4 +48,4 @@ mkdir -p "${WORKSPACE_DIR}"
 
 cd "${HOME}"
 
-exec openchamber --foreground --host 0.0.0.0 --port "${DOCKER_PORT}"
+exec openchamber --foreground --host 0.0.0.0 --port "${MAYFLY_PORT}"

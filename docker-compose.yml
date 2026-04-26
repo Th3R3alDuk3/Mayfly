@@ -1,22 +1,50 @@
 services:
-  mayfly-image:
+  mayfly:
     profiles: ["build"]
     build:
       context: ./docker
-    image: ${DOCKER_IMAGE}
+      dockerfile: Dockerfile.mayfly
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
+        NPM_REGISTRY: ${NPM_REGISTRY}
+        NPM_STRICT_SSL: ${NPM_STRICT_SSL}
+        MAYFLY_PORT: ${MAYFLY_PORT}
+    image: ${MAYFLY_IMAGE}
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
+        APP_PORT: ${APP_PORT}
+    image: app:0.1.0
+    restart: unless-stopped
+    env_file: .env
+    command: ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}"]
+    ports:
+      - "172.17.0.1:${APP_PORT}:${APP_PORT}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mayfly-net
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    depends_on:
+      - app
     ports:
-      - "8443:443"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "${PUBLIC_PORT}:443"
     environment:
       PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
-      MAYFLY_HOST: host.docker.internal
+      APP_HOST: app
+      APP_PORT: ${APP_PORT}
       MAYFLY_PORT: ${MAYFLY_PORT}
-      DOCKER_PORT: ${DOCKER_PORT}
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

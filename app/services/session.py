@@ -27,12 +27,12 @@ class SessionManager:
         token = entry.session.token
 
         async with self._lock:
-            if len(self._sessions) >= self._settings.max_containers:
-                raise RuntimeError("Max container limit reached")
+            if len(self._sessions) >= self._settings.mayfly_max_sessions:
+                raise RuntimeError("Max mayfly limit reached")
             self._sessions[token] = entry
             if start_cleanup:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(token, self._settings.container_start_timeout)
+                    self._close_after_idle(token, self._settings.mayfly_start_timeout)
                 )
 
         return entry.session
@@ -50,7 +50,7 @@ class SessionManager:
                 raise RuntimeError("Session was closed during start")
             if entry.cleanup_task is None and not entry.client_connected:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(session.token, self._settings.container_start_timeout)
+                    self._close_after_idle(session.token, self._settings.mayfly_start_timeout)
                 )
 
         return session
@@ -93,7 +93,7 @@ class SessionManager:
             if entry.cleanup_task is not None:
                 return
             entry.cleanup_task = create_task(
-                self._close_after_idle(token, self._settings.container_disconnect_grace)
+                self._close_after_idle(token, self._settings.mayfly_disconnect_grace)
             )
 
     async def wait_ready(self, token: str) -> Session | None:
@@ -119,8 +119,8 @@ class SessionManager:
         active = len(self._sessions)
         return {
             "active": active,
-            "available": max(0, self._settings.max_containers - active),
-            "limit": self._settings.max_containers,
+            "available": max(0, self._settings.mayfly_max_sessions - active),
+            "limit": self._settings.mayfly_max_sessions,
         }
 
     async def close(self, token: str, *, raise_errors: bool = False) -> None:
