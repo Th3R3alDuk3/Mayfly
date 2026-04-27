@@ -25,6 +25,8 @@ flowchart LR
 
 ## 🚀 Quick start
 
+You need an OpenAI-compatible inference endpoint reachable from the host (e.g. vLLM, llama.cpp, Ollama, LM Studio, or the OpenAI API itself). Point `OPENAI_BASE_URL` / `OPENAI_MODEL` at it in `.env`.
+
 ```bash
 cp .env.example .env
 docker compose --profile build build   # build the sandbox image
