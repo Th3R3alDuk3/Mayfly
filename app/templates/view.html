@@ -15,8 +15,9 @@
          class="flex items-center justify-center h-7 min-w-12 px-3 rounded-full
                 text-xs text-neutral-500 dark:text-neutral-400
                 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800"
-         title="Container: aktiv / limit">
-      <span id="status-value" class="block text-center leading-none font-mono tabular-nums">
+         title="Containers: active / limit">
+      <span id="status-value" aria-live="polite"
+            class="block text-center leading-none font-mono tabular-nums">
         &ndash;/&ndash;
       </span>
     </div>
@@ -26,14 +27,17 @@
     <div id="loading-panel" class="flex flex-col items-center justify-center h-full gap-5">
       <img src="/logo.png" alt="" width="512" height="512"
            decoding="async" class="h-56 w-56">
-      <span id="ready-text" class="text-sm text-neutral-500 dark:text-neutral-400">
+      <span id="ready-text" aria-live="polite"
+            class="text-sm text-neutral-500 dark:text-neutral-400">
         Starting Mayfly…
       </span>
       <div id="spinner">{% include "_spinner.html" %}</div>
     </div>
     <iframe id="session-frame"
-            class="hidden block h-full w-full border-0"
-            allow="clipboard-read; clipboard-write"></iframe>
+            class="hidden h-full w-full border-0"
+            allow="clipboard-read; clipboard-write"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
+            referrerpolicy="no-referrer"></iframe>
   </main>
 </div>
 {% endblock %}

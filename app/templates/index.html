@@ -5,11 +5,27 @@
   <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
     <img src="/logo.png" alt="Mayfly" width="512" height="512"
          fetchpriority="high" decoding="async" class="h-56 w-56">
-    <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
+    <span id="status-text" aria-live="polite"
+          class="text-sm text-neutral-500 dark:text-neutral-400">
       Starting Mayfly…
     </span>
     {% include "_spinner.html" %}
     <form id="start-form" method="post" action="/view" class="hidden"></form>
+    <noscript>
+      <form method="post" action="/view">
+        <button type="submit"
+                class="px-5 py-2 rounded-md text-sm font-medium
+                       text-neutral-900 dark:text-neutral-100
+                       bg-neutral-200 dark:bg-neutral-800
+                       hover:bg-neutral-300 dark:hover:bg-neutral-700
+                       border border-neutral-300 dark:border-neutral-700">
+          Start session
+        </button>
+      </form>
+      <p class="text-sm text-neutral-500 dark:text-neutral-400 max-w-sm text-center px-6">
+        JavaScript is required for live status updates.
+      </p>
+    </noscript>
   </div>
 </main>
 {% endblock %}
