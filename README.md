@@ -14,7 +14,7 @@
 
 One click and you're in a fresh [OpenCode](https://opencode.ai) workspace running inside its own short-lived sandbox. No install, no leftover state — gone when you close the tab.
 
-## Flow
+## 🌊 Flow
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ flowchart LR
   B -. iframe<br/>:random port .-> M
 ```
 
-## Quick start
+## 🚀 Quick start
 
 ```bash
 cp .env.example .env
@@ -33,7 +33,7 @@ docker compose up -d                   # start the orchestrator
 
 Open <http://localhost:8123>.
 
-## Tunables
+## ⚙️ Tunables
 
 Everything lives in [.env](.env.example). The ones worth knowing:
 
@@ -47,13 +47,13 @@ Everything lives in [.env](.env.example). The ones worth knowing:
 
 Offline / Nexus builds: override `PIP_INDEX_URL` and `NPM_REGISTRY` in `.env`.
 
-## Surface
+## 🌐 Surface
 
 - **`/`** — start a session
 - **`/docs`** — OpenAPI
 - **`/mcp/`** — MCP endpoint, reachable from the host at `http://localhost:8123/mcp/`
 
-## Layout
+## 🧩 Layout
 
 - [`app/`](app/) — FastAPI orchestrator
 - [`docker/Dockerfile.mayfly`](docker/Dockerfile.mayfly) — per-session sandbox image (build-only profile)
