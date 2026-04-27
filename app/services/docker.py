@@ -127,7 +127,7 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
             name=f"mayfly-{session_id}",
             hostname=f"mayfly-{session_id}",
             network=settings.mayfly_network,
-            ports={f"{settings.mayfly_port}/tcp": ("127.0.0.1", None)},
+            ports={f"{settings.mayfly_port}/tcp": (settings.mayfly_bind_host, None)},
             mem_limit=settings.mayfly_memory,
             nano_cpus=int(settings.mayfly_cpus * 1_000_000_000),
             tmpfs={

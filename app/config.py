@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     #
     mayfly_image: str = Field(min_length=1)
     mayfly_port: int = Field(ge=1, le=65535)
+    mayfly_bind_host: str = Field(min_length=1)
     mayfly_network: str = Field(min_length=1)
     mayfly_max_sessions: int = Field(gt=0)
     mayfly_memory: str = Field(min_length=1)
