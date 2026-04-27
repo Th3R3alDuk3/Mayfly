@@ -7,7 +7,9 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 from app.config import SettingsDep
 from app.models.session import (
     ConnectResult,
+    Session,
     SessionCreateResponse,
+    SessionLifecycleEvent,
     SessionState,
     SessionStatusResponse,
 )
@@ -18,9 +20,17 @@ logger = getLogger(__name__)
 router = APIRouter()
 
 
+def _lifecycle_event(session: Session, public_host: str) -> SessionLifecycleEvent:
+    url = (
+        f"http://{public_host}:{session.container.port}/"
+        if session.state == SessionState.READY and session.container is not None
+        else None
+    )
+    return SessionLifecycleEvent(state=session.state, error=session.error, url=url)
+
+
 @router.get(
     path="/sessions/status",
-    response_model=SessionStatusResponse,
     operation_id="get_mayfly_status",
     tags=["sessions"],
     description="Returns the number of active, available, and maximum containers.",
@@ -30,14 +40,12 @@ async def get_sessions_status(
 ) -> SessionStatusResponse:
 
     manager: SessionManager = request.app.state.manager
-    manager_status = manager.status()
-    return SessionStatusResponse.model_validate(manager_status)
+    return manager.status()
 
 
 @router.post(
     path="/sessions",
     status_code=201,
-    response_model=SessionCreateResponse,
     operation_id="create_mayfly_session",
     tags=["sessions"],
     description="Starts a session with its own Mayfly sandbox.",
@@ -55,7 +63,7 @@ async def create_session(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     return SessionCreateResponse(
-        url=f"https://{settings.public_domain}:{settings.public_port}/view/{session.token}",
+        url=f"http://{settings.public_host}:{settings.app_port}/view/{session.token}",
     )
 
 
@@ -88,6 +96,7 @@ async def delete_session(
 async def session_lifecycle(
     token: str,
     websocket: WebSocket,
+    settings: SettingsDep,
 ) -> None:
 
     manager: SessionManager = websocket.app.state.manager
@@ -109,14 +118,14 @@ async def session_lifecycle(
         await websocket.close(code=4004, reason="unknown token")
         return
 
-    await websocket.send_json({"state": session.state, "error": session.error})
+    await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
 
     if session.state == SessionState.STARTING:
         session = await manager.wait_ready(token)
         if session is None:
             await websocket.close(code=4004, reason="unknown token")
             return
-        await websocket.send_json({"state": session.state, "error": session.error})
+        await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
 
     if session.state != SessionState.READY:
         await websocket.close(code=1011, reason=session.error or "session not ready")
@@ -128,7 +137,7 @@ async def session_lifecycle(
     closing_task = create_task(manager.wait_closing(token))
 
     try:
-        while True:            
+        while True:
             done, _ = await wait(
                 {receive_task, closing_task},
                 return_when=FIRST_COMPLETED,
@@ -141,12 +150,12 @@ async def session_lifecycle(
             if closing_task in done:
                 closed_by_manager = True
                 await websocket.close(code=1001, reason="session closed")
-                return            
+                return
     except WebSocketDisconnect:
         logger.info(f"Lifecycle WS disconnected: {token}")
     except Exception:
         logger.exception(f"Lifecycle WS error: {token}")
-    finally:        
+    finally:
         for task in (receive_task, closing_task):
             if not task.done():
                 task.cancel()

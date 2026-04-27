@@ -5,6 +5,8 @@ set -e
 : "${OPENAI_MODEL:?}"
 : "${OPENAI_CONTEXT_TOKENS:?}"
 : "${OPENAI_OUTPUT_TOKENS:?}"
+: "${OPENAI_TIMEOUT:?}"
+: "${OPENAI_CHUNK_TIMEOUT:?}"
 : "${MAYFLY_PORT:?}"
 
 CONFIG_DIR="${HOME}/.config/opencode"
@@ -19,7 +21,9 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
       "npm": "@ai-sdk/openai-compatible",
       "name": "Mayfly",
       "options": {
-        "baseURL": "${OPENAI_BASE_URL}"
+        "baseURL": "${OPENAI_BASE_URL}",
+        "timeout": ${OPENAI_TIMEOUT},
+        "chunkTimeout": ${OPENAI_CHUNK_TIMEOUT}
       },
       "models": {
         "${OPENAI_MODEL}": {

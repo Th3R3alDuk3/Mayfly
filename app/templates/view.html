@@ -5,7 +5,8 @@
   <header class="flex items-center justify-between shrink-0 h-14 px-5
                  border-b border-neutral-200 dark:border-neutral-800">
     <div class="flex items-center gap-2.5">
-      <img src="/logo.png" alt="" class="h-12 w-12">
+      <img src="/logo.png" alt="" width="512" height="512"
+           fetchpriority="high" decoding="async" class="h-12 w-12">
       <span class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
         Mayfly
       </span>
@@ -23,14 +24,14 @@
 
   <main class="flex-1 min-h-0">
     <div id="loading-panel" class="flex flex-col items-center justify-center h-full gap-5">
-      <img src="/logo.png" alt="" class="h-56 w-56">
+      <img src="/logo.png" alt="" width="512" height="512"
+           decoding="async" class="h-56 w-56">
       <span id="ready-text" class="text-sm text-neutral-500 dark:text-neutral-400">
         Starting Mayfly…
       </span>
       <div id="spinner">{% include "_spinner.html" %}</div>
     </div>
     <iframe id="session-frame"
-            data-src="{{ container_url }}"
             class="hidden block h-full w-full border-0"
             allow="clipboard-read; clipboard-write"></iframe>
   </main>
@@ -57,8 +58,12 @@
     }
   }
 
-  function showSession() {
-    sessionFrame.src = sessionFrame.dataset.src;
+  function showSession(url) {
+    if (!url) {
+      showError('Session is missing a container URL.');
+      return;
+    }
+    sessionFrame.src = url;
     loadingPanel.classList.add('hidden');
     sessionFrame.classList.remove('hidden');
   }
@@ -72,11 +77,11 @@
   const ws = new WebSocket(`${wsProto}://${location.host}/sessions/${token}/lifecycle`);
 
   ws.onmessage = (event) => {
-    const { state, error } = JSON.parse(event.data);
+    const { state, error, url } = JSON.parse(event.data);
     if (state === 'starting') {
       readyText.textContent = 'Starting Mayfly…';
     } else if (state === 'ready') {
-      showSession();
+      showSession(url);
     } else if (state === 'error') {
       showError(error || 'Session failed to start.');
     }

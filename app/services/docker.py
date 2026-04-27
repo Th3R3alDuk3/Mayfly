@@ -44,13 +44,16 @@ class DockerRuntime:
         container: DockerContainer | None = None
         try:
             container = _run_container(self._client, session_id, self._settings)
-            name = f"mayfly-{session_id}"
-            ip = _container_ip(container, self._settings.mayfly_network)
+            ip, port = _inspect_container(
+                container, self._settings.mayfly_network, self._settings.mayfly_port
+            )
 
-            logger.info(f"Container started: {container.short_id} ({name} @ {ip}) — waiting for ready")
+            logger.info(
+                f"Container started: {container.short_id} ({container.name} @ {ip}, host:{port}) — waiting for ready"
+            )
             _wait_ready(ip, self._settings.mayfly_port)
-            logger.info(f"Container ready: {container.short_id} ({name})")
-            return Container(id=container.id, name=name)
+            logger.info(f"Container ready: {container.short_id} ({container.name})")
+            return Container(id=container.id, port=port)
         except Exception:
             if container is not None:
                 try:
@@ -122,8 +125,9 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
             settings.mayfly_image,
             detach=True,
             name=f"mayfly-{session_id}",
-            hostname="mayfly",
+            hostname=f"mayfly-{session_id}",
             network=settings.mayfly_network,
+            ports={f"{settings.mayfly_port}/tcp": ("127.0.0.1", None)},
             mem_limit=settings.mayfly_memory,
             nano_cpus=int(settings.mayfly_cpus * 1_000_000_000),
             tmpfs={
@@ -141,6 +145,9 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
                 "OPENAI_MODEL": settings.openai_model,
                 "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
                 "OPENAI_OUTPUT_TOKENS": settings.openai_output_tokens,
+                "OPENAI_TIMEOUT": settings.openai_timeout,
+                "OPENAI_CHUNK_TIMEOUT": settings.openai_chunk_timeout,
+                "TZ": settings.tz,
             },
             extra_hosts={"host.docker.internal": "host-gateway"},
             auto_remove=False,
@@ -152,13 +159,19 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
         raise RuntimeError(f"Docker error: {error}") from error
 
 
-def _container_ip(container: DockerContainer, network: str) -> str:
+def _inspect_container(container: DockerContainer, network: str, container_port: int) -> tuple[str, int]:
     container.reload()
-    networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
-    ip = networks.get(network, {}).get("IPAddress")
+    settings = container.attrs.get("NetworkSettings", {})
+
+    ip = settings.get("Networks", {}).get(network, {}).get("IPAddress")
     if not ip:
         raise RuntimeError(f"Container {container.short_id}: no IP on {network}")
-    return ip
+
+    bindings = settings.get("Ports", {}).get(f"{container_port}/tcp") or []
+    if not bindings:
+        raise RuntimeError(f"Container {container.short_id}: no host port mapped for {container_port}/tcp")
+
+    return ip, int(bindings[0]["HostPort"])
 
 
 def _wait_ready(host: str, port: int) -> None:

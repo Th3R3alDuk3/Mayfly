@@ -3,7 +3,8 @@
 {% block content %}
 <main class="h-full">
   <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
-    <img src="/logo.png" alt="Mayfly" class="h-56 w-56">
+    <img src="/logo.png" alt="Mayfly" width="512" height="512"
+         fetchpriority="high" decoding="async" class="h-56 w-56">
     <span id="status-text" class="text-sm text-neutral-500 dark:text-neutral-400">
       Starting Mayfly…
     </span>

@@ -4,6 +4,7 @@ from logging import INFO, basicConfig, getLogger
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi_offline import FastAPIOffline
 from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
     logger.info(
         f"Mayfly up — listen :{settings.app_port}, "
-        f"public https://{settings.public_domain}:{settings.public_port}"
+        f"public http://{settings.public_host}:{settings.app_port}"
     )
     manager = SessionManager(settings)
     await manager.cleanup_stale_containers()
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await app.state.manager.close_all()
 
 
-app = FastAPI(title="Mayfly")
+app = FastAPIOffline(title="Mayfly")
 
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.include_router(sessions.router)

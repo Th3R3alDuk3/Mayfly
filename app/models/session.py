@@ -33,6 +33,12 @@ class SessionStatusResponse(BaseModel):
     limit: int = Field(gt=0)
 
 
+class SessionLifecycleEvent(BaseModel):
+    state: SessionState
+    error: str | None = None
+    url: str | None = None
+
+
 class ConnectResult(StrEnum):
     OK = "ok"
     UNKNOWN = "unknown"

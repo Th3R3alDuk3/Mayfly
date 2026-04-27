@@ -13,9 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    public_domain: str = Field(min_length=1)
-    public_port: int = Field(ge=1, le=65535)
-    #
+    public_host: str = Field(min_length=1)
     app_port: int = Field(ge=1, le=65535)
     #
     mayfly_image: str = Field(min_length=1)
@@ -32,6 +30,9 @@ class Settings(BaseSettings):
     openai_model: str = Field(min_length=1)
     openai_context_tokens: int = Field(gt=0)
     openai_output_tokens: int = Field(gt=0)
+    openai_timeout: int = Field(gt=0)
+    openai_chunk_timeout: int = Field(gt=0)
+    tz: str = Field(min_length=1)
 
 
 @lru_cache

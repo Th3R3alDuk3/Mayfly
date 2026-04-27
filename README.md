@@ -1,50 +1,60 @@
-<p align="center">
-  <img src="app/static/logo.png" alt="Mayfly Logo" width="200"/>
-</p>
+<div align="center">
+  <img src="app/static/logo.png" alt="Mayfly" width="180"/>
+  <h1>Mayfly</h1>
+  <p><em>Disposable, browser-based coding sessions in isolated Docker sandboxes.</em></p>
+  <p>
+    <img src="https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white" alt="">
+    <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white" alt="">
+    <img src="https://img.shields.io/badge/Docker-required-2496ED?logo=docker&logoColor=white" alt="">
+    <img src="https://img.shields.io/badge/status-alpha-E48400" alt="">
+  </p>
+</div>
 
 ---
 
-![Python](https://img.shields.io/badge/python-3.13+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
-![Docker SDK](https://img.shields.io/badge/Docker%20SDK-7.0+-2496ED)
-![Status](https://img.shields.io/badge/status-alpha-orange)
+One click and you're in a fresh [OpenCode](https://opencode.ai) workspace running inside its own short-lived sandbox. No install, no leftover state — gone when you close the tab.
 
-> Disposable browser-based coding sessions in isolated Docker containers.
+## Flow
 
-## What
+```mermaid
+flowchart LR
+  B([Browser]) -- HTTP --> A[FastAPI orchestrator]
+  A -- docker run --> M[[mayfly sandbox<br/>OpenCode + OpenChamber]]
+  B -. iframe<br/>:random port .-> M
+```
 
-A small FastAPI service that hands out short-lived `OpenCode` / `OpenChamber` workspaces. Each session gets its own mayfly and its own subdomain — and disappears when nobody's looking.
-
-Caddy fronts everything for TLS and per-session subdomain routing.
-
-## Run
+## Quick start
 
 ```bash
 cp .env.example .env
-docker compose --profile build build   # mayfly sandbox image
-docker compose up -d --build           # app + caddy
+docker compose --profile build build   # build the sandbox image
+docker compose up -d                   # start the orchestrator
 ```
 
-Then open `https://mayfly.localhost:8443/`.
+Open <http://localhost:8123>.
+
+## Tunables
+
+Everything lives in [.env](.env.example). The ones worth knowing:
+
+| | |
+| --- | --- |
+| `MAYFLY_MAX_SESSIONS` | concurrency cap |
+| `MAYFLY_DISCONNECT_GRACE` | how long an unwatched session survives |
+| `OPENAI_BASE_URL` / `OPENAI_MODEL` | LLM each sandbox talks to |
+| `OPENAI_TIMEOUT` / `OPENAI_CHUNK_TIMEOUT` | be generous with slow / cold models |
+| `TZ` | shared timezone for app + sandboxes |
+
+Offline / Nexus builds: override `PIP_INDEX_URL` and `NPM_REGISTRY` in `.env`.
+
+## Surface
+
+- **`/`** — start a session
+- **`/docs`** — OpenAPI
+- **`/mcp/`** — MCP endpoint, reachable from the host at `http://localhost:8123/mcp/`
 
 ## Layout
 
-- `app` — FastAPI orchestrator (built from [docker/Dockerfile.app](docker/Dockerfile.app))
-- `mayfly` — per-session sandbox image with OpenCode/OpenChamber (built from [docker/Dockerfile.mayfly](docker/Dockerfile.mayfly), build-only profile)
-- `caddy` — TLS + per-session subdomain routing
-
-## More
-
-Configuration lives in `.env`. API surface is small — OpenAPI at `/docs`, MCP at `/mcp/`.
-
-### Reaching the MCP / API endpoint
-
-The `app` service binds to `172.17.0.1:${APP_PORT}` — the default Docker bridge gateway. That single bind serves all three reasonable callers:
-
-| Caller | URL |
-| --- | --- |
-| Browser / TLS-aware client on the host | `https://mayfly.localhost:${PUBLIC_PORT}/mcp/` (via Caddy) |
-| Plain HTTP from the host | `http://172.17.0.1:${APP_PORT}/mcp/` |
-| Another container on the default `bridge` network (e.g. OpenWebUI) | `http://172.17.0.1:${APP_PORT}/mcp/` |
-
-The HTTP route stays off your LAN (no `0.0.0.0` bind) and you don't need to attach foreign containers to `mayfly-net`.
+- [`app/`](app/) — FastAPI orchestrator
+- [`docker/Dockerfile.mayfly`](docker/Dockerfile.mayfly) — per-session sandbox image (build-only profile)
+- [`docker/Dockerfile.app`](docker/Dockerfile.app) — orchestrator image

@@ -8,7 +8,13 @@ from asyncio import (
 from logging import getLogger
 
 from app.config import Settings
-from app.models.session import ConnectResult, Session, SessionEntry, SessionState
+from app.models.session import (
+    ConnectResult,
+    Session,
+    SessionEntry,
+    SessionState,
+    SessionStatusResponse,
+)
 from app.services.docker import DockerRuntime
 
 
@@ -115,13 +121,13 @@ class SessionManager:
             return None
         return entry.session
 
-    def status(self) -> dict[str, int]:
+    def status(self) -> SessionStatusResponse:
         active = len(self._sessions)
-        return {
-            "active": active,
-            "available": max(0, self._settings.mayfly_max_sessions - active),
-            "limit": self._settings.mayfly_max_sessions,
-        }
+        return SessionStatusResponse(
+            active=active,
+            available=max(0, self._settings.mayfly_max_sessions - active),
+            limit=self._settings.mayfly_max_sessions,
+        )
 
     async def close(self, token: str, *, raise_errors: bool = False) -> None:
         async with self._lock:

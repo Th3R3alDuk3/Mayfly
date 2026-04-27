@@ -3,7 +3,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import SettingsDep
 from app.services.session import SessionManager
 
 
@@ -14,7 +13,6 @@ templates = Jinja2Templates(directory="app/templates")
 @router.get(
     path="/",
     include_in_schema=False,
-    response_class=HTMLResponse,
 )
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -50,12 +48,10 @@ async def create_view_session(
 @router.get(
     path="/view/{token}",
     include_in_schema=False,
-    response_class=HTMLResponse,
 )
 async def view_session(
     token: str,
     request: Request,
-    settings: SettingsDep,
 ) -> HTMLResponse:
 
     manager: SessionManager = request.app.state.manager
@@ -64,19 +60,15 @@ async def view_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    container_url = f"https://{token}.{settings.public_domain}:{settings.public_port}/"
     return templates.TemplateResponse(
         request=request,
         name="view.html",
-        context={
-            "container_url": container_url,
-            "token": token,
-        },
+        context={"token": token},
     )
 
 
 async def http_exception_handler(
-    request: Request, 
+    request: Request,
     exception: StarletteHTTPException,
 ) -> Response:
 

@@ -5,7 +5,8 @@
 {% block content %}
 <main class="h-full">
   <div class="flex flex-col items-center justify-center h-full gap-5">
-    <img src="/logo.png" alt="Mayfly" class="h-56 w-56">
+    <img src="/logo.png" alt="Mayfly" width="512" height="512"
+         fetchpriority="high" decoding="async" class="h-56 w-56">
     <div class="text-6xl font-semibold font-mono tabular-nums
                 text-neutral-900 dark:text-neutral-100">
       {{ status_code }}
