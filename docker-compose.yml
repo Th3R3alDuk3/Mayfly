@@ -27,7 +27,7 @@ services:
       TZ: ${TZ}
     command: ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}"]
     ports:
-      - "0.0.0.0:${APP_PORT}:${APP_PORT}"
+      - "${APP_BIND_HOST}:${APP_PORT}:${APP_PORT}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
