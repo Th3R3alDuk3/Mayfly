@@ -1,6 +1,6 @@
 [project]
 name = "Mayfly"
-version = "0.1.0"
+version = "0.2.0"
 description = "FastAPI service for ephemeral per-session OpenCode/OpenChamber Docker containers"
 readme = "README.md"
 requires-python = ">=3.13"
