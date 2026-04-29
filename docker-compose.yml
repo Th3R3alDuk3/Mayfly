@@ -25,7 +25,6 @@ services:
     env_file: .env
     environment:
       TZ: ${TZ}
-    command: ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}"]
     ports:
       - "${APP_BIND_HOST}:${APP_PORT}:${APP_PORT}"
     volumes:
