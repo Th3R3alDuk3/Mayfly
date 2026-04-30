@@ -12,7 +12,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 
 FROM python:3.13-slim-bookworm AS runtime
