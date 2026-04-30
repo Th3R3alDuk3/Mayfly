@@ -8,6 +8,7 @@ set -e
 : "${OPENAI_TIMEOUT:?}"
 : "${OPENAI_CHUNK_TIMEOUT:?}"
 : "${MAYFLY_PORT:?}"
+: "${MAYFLY_PASSWORD:?}"
 
 CONFIG_DIR="${HOME}/.config/opencode"
 mkdir -p "${CONFIG_DIR}"
@@ -56,4 +57,8 @@ mkdir -p "${WORKSPACE_DIR}"
 
 cd "${HOME}"
 
-exec openchamber --foreground --host 0.0.0.0 --port "${MAYFLY_PORT}"
+exec openchamber \
+  --foreground \
+  --host 0.0.0.0 \
+  --port "${MAYFLY_PORT}" \
+  --ui-password "${MAYFLY_PASSWORD}"

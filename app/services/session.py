@@ -182,7 +182,7 @@ class SessionManager:
         remove_on_error: bool,
     ) -> None:
         try:
-            container = await self._runtime.start_session_container(token)
+            container = await self._runtime.start_session_container(token, entry.session.password)
         except Exception as error:
             logger.exception(f"Failed to start session {token}")
             async with self._lock:

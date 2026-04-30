@@ -35,6 +35,8 @@ docker compose up -d                   # start the orchestrator
 
 Open <http://localhost:8123>.
 
+Each session gets a random OpenChamber UI password. The web view shows it; `POST /sessions` returns it as `password`.
+
 ## ⚙️ Tunables
 
 Everything lives in [.env](.env.example). The ones worth knowing:

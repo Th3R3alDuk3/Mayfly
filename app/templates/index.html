@@ -10,14 +10,21 @@
          height="512"
          decoding="async"
          fetchpriority="high">
-    <span class="text-sm text-neutral-500 dark:text-neutral-400" aria-live="polite">
+    <span class="text-sm text-neutral-500 dark:text-neutral-400"
+          aria-live="polite">
       Starting Mayfly...
     </span>
     {% include "_loading_spinner.html" %}
-    <form class="hidden" method="post" action="/view" data-autostart-form></form>
+    <form class="hidden"
+          method="post"
+          action="/view"
+          data-autostart-form></form>
     <noscript>
       <form method="post" action="/view">
-        <button class="rounded-md border border-neutral-300 bg-neutral-200 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+        <button class="rounded-md border border-neutral-300 bg-neutral-200 px-5 py-2
+                       text-sm font-medium text-neutral-900 hover:bg-neutral-300
+                       dark:border-neutral-700 dark:bg-neutral-800
+                       dark:text-neutral-100 dark:hover:bg-neutral-700"
                 type="submit">
           Start session
         </button>

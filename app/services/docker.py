@@ -32,8 +32,8 @@ class DockerRuntime:
         self._settings = settings
         self._client: DockerClient = from_env()
 
-    async def start_session_container(self, session_id: str) -> Container:
-        return await to_thread(self._start_session_container, session_id)
+    async def start_session_container(self, session_id: str, password: str) -> Container:
+        return await to_thread(self._start_session_container, session_id, password)
 
     async def stop_container(self, container_id: str) -> None:
         await to_thread(self._stop_container, container_id)
@@ -44,10 +44,10 @@ class DockerRuntime:
     def close(self) -> None:
         self._client.close()
 
-    def _start_session_container(self, session_id: str) -> Container:
+    def _start_session_container(self, session_id: str, password: str) -> Container:
         container: DockerContainer | None = None
         try:
-            container = _run_container(self._client, session_id, self._settings)
+            container = _run_container(self._client, session_id, password, self._settings)
             ip, port = _inspect_container(container, _MAYFLY_NETWORK, _MAYFLY_CONTAINER_PORT)
 
             logger.info(
@@ -112,13 +112,18 @@ class DockerRuntime:
                 logger.warning(f"Failed to remove stale container {container.short_id}: {error}")
 
 
-def _run_container(client: DockerClient, session_id: str, settings: Settings) -> DockerContainer:
+def _run_container(
+    client: DockerClient,
+    session_id: str,
+    password: str,
+    settings: Settings,
+) -> DockerContainer:
     last_port_error: APIError | None = None
 
     for host_port in range(settings.mayfly_host_port_start, settings.mayfly_host_port_end + 1):
         container: DockerContainer | None = None
         try:
-            container = _create_session_container(client, session_id, settings, host_port)
+            container = _create_session_container(client, session_id, password, settings, host_port)
             container.start()
             return container
         except ImageNotFound as error:
@@ -142,9 +147,13 @@ def _run_container(client: DockerClient, session_id: str, settings: Settings) ->
 
 
 def _create_session_container(
-    client: DockerClient, session_id: str, settings: Settings, host_port: int
+    client: DockerClient,
+    session_id: str,
+    password: str,
+    settings: Settings,
+    host_port: int,
 ) -> DockerContainer:
-    kwargs = _session_container_kwargs(session_id, settings, host_port)
+    kwargs = _session_container_kwargs(session_id, password, settings, host_port)
     try:
         return client.containers.create(settings.mayfly_image, **kwargs)
     except ImageNotFound:
@@ -152,7 +161,12 @@ def _create_session_container(
         return client.containers.create(settings.mayfly_image, **kwargs)
 
 
-def _session_container_kwargs(session_id: str, settings: Settings, host_port: int) -> dict[str, object]:
+def _session_container_kwargs(
+    session_id: str,
+    password: str,
+    settings: Settings,
+    host_port: int,
+) -> dict[str, object]:
     return {
         "detach": True,
         "name": f"mayfly-{session_id}",
@@ -172,6 +186,7 @@ def _session_container_kwargs(session_id: str, settings: Settings, host_port: in
         "user": "1000:1000",
         "environment": {
             "MAYFLY_PORT": _MAYFLY_CONTAINER_PORT,
+            "MAYFLY_PASSWORD": password,
             "OPENAI_BASE_URL": settings.openai_base_url,
             "OPENAI_MODEL": settings.openai_model,
             "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,

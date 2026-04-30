@@ -4,7 +4,8 @@
 
 {% block content %}
 <div class="flex h-full flex-col">
-  <header class="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5 dark:border-neutral-800">
+  <header class="flex h-14 shrink-0 items-center justify-between
+                 border-b border-neutral-200 px-5 dark:border-neutral-800">
     <div class="flex items-center gap-2.5">
       <img class="block h-12 w-12"
            src="/logo.png"
@@ -17,18 +18,44 @@
         Mayfly
       </span>
     </div>
-    <div class="flex h-7 min-w-12 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 px-3 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
-         title="Sessions: active / limit">
-      <span id="session-status-value"
-            class="block text-center font-mono leading-none tabular-nums"
-            aria-live="polite">
-        -/-
-      </span>
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2
+                  text-xs text-neutral-600
+                  dark:text-neutral-300"
+           data-session-password-panel
+           hidden>
+        <span>Password:</span>
+        <code id="session-password"
+              class="max-w-48 truncate font-mono font-semibold
+                     text-emerald-700 dark:text-emerald-400"
+              data-session-password-value></code>
+        <button class="rounded-md border border-neutral-300 px-2 py-0.5
+                       text-neutral-700 hover:bg-neutral-200
+                       dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                type="button"
+                data-copy-password>
+          Copy
+        </button>
+      </div>
+      <div class="flex h-7 min-w-12 items-center justify-center rounded-md
+                  border border-neutral-200 bg-neutral-100 px-3
+                  text-xs text-neutral-500
+                  dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
+           title="Sessions: active / limit">
+        <span id="session-status-value"
+              class="block text-center font-mono leading-none tabular-nums"
+              aria-live="polite">
+          -/-
+        </span>
+      </div>
     </div>
   </header>
 
-  <main class="min-h-0 flex-1" data-session-view data-session-token="{{ token }}">
-    <div id="session-loading" class="flex h-full flex-col items-center justify-center gap-5">
+  <main class="flex min-h-0 flex-1 flex-col"
+        data-session-view
+        data-session-token="{{ token }}">
+    <div id="session-loading"
+         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-5">
       <img class="block h-56 w-56"
            src="/logo.png"
            alt=""
@@ -43,11 +70,10 @@
       <div id="session-spinner">{% include "_loading_spinner.html" %}</div>
     </div>
     <iframe id="session-frame"
-            class="hidden h-full w-full border-0"
+            class="hidden min-h-0 flex-1 w-full border-0"
             title="Mayfly session"
             allow="clipboard-read; clipboard-write"
-            referrerpolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"></iframe>
+            referrerpolicy="no-referrer"></iframe>
   </main>
 </div>
 {% endblock %}

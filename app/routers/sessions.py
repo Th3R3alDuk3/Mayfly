@@ -20,13 +20,30 @@ logger = getLogger(__name__)
 router = APIRouter()
 
 
-def _lifecycle_event(session: Session, public_host: str) -> SessionLifecycleEvent:
+def _lifecycle_event(
+    session: Session,
+    host: str,
+    *,
+    include_password: bool = False,
+) -> SessionLifecycleEvent:
     url = (
-        f"http://{public_host}:{session.container.port}/"
+        f"http://{_url_host(host)}:{session.container.port}/"
         if session.state == SessionState.READY and session.container is not None
         else None
     )
-    return SessionLifecycleEvent(state=session.state, error=session.error, url=url)
+    password = session.password if include_password else None
+    return SessionLifecycleEvent(state=session.state, error=session.error, url=url, password=password)
+
+
+def _client_host(candidate: str | None, fallback: str) -> str:
+    host = (candidate or "").strip()
+    return host or fallback
+
+
+def _url_host(host: str) -> str:
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]"
+    return host
 
 
 @router.get(
@@ -52,7 +69,6 @@ async def get_sessions_status(
 )
 async def create_session(
     request: Request,
-    settings: SettingsDep,
 ) -> SessionCreateResponse:
 
     manager: SessionManager = request.app.state.manager
@@ -63,7 +79,8 @@ async def create_session(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     return SessionCreateResponse(
-        url=f"http://{settings.public_host}:{settings.app_port}/view/{session.token}",
+        url=str(request.url_for("view_session", token=session.token)),
+        password=session.password,
     )
 
 
@@ -100,6 +117,7 @@ async def session_lifecycle(
 ) -> None:
 
     manager: SessionManager = websocket.app.state.manager
+    host = _client_host(websocket.url.hostname, settings.public_host)
 
     await websocket.accept()
 
@@ -125,7 +143,9 @@ async def session_lifecycle(
             await websocket.close(code=4004, reason="unknown token")
             return
 
-        await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
+        await websocket.send_json(
+            _lifecycle_event(session, host, include_password=True).model_dump(mode="json")
+        )
 
         if session.state == SessionState.STARTING:
             session = await manager.wait_ready(token)
@@ -133,7 +153,9 @@ async def session_lifecycle(
                 arm_disconnect_timeout = False
                 await websocket.close(code=4004, reason="unknown token")
                 return
-            await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
+            await websocket.send_json(
+                _lifecycle_event(session, host, include_password=True).model_dump(mode="json")
+            )
 
         if session.state != SessionState.READY:
             arm_disconnect_timeout = False

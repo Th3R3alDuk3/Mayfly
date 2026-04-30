@@ -15,6 +15,9 @@
   const message = document.getElementById('session-message');
   const spinner = document.getElementById('session-spinner');
   const statusValue = document.getElementById('session-status-value');
+  const passwordPanels = Array.from(document.querySelectorAll('[data-session-password-panel]'));
+  const passwordValues = Array.from(document.querySelectorAll('[data-session-password-value]'));
+  const copyPasswordButtons = Array.from(document.querySelectorAll('[data-copy-password]'));
 
   if (
     !token ||
@@ -29,6 +32,7 @@
 
   let statusInterval;
   let terminalMessageShown = false;
+  let password = '';
   let socket;
 
   async function refreshStatus() {
@@ -67,10 +71,46 @@
     frame.classList.remove('hidden');
   }
 
+  function setPassword(value) {
+    password = value;
+    for (const element of passwordValues) {
+      element.textContent = value;
+    }
+    for (const panel of passwordPanels) {
+      if (panel instanceof HTMLElement) {
+        panel.hidden = false;
+      }
+    }
+  }
+
   function lifecycleUrl() {
     const url = new URL(`/sessions/${encodeURIComponent(token)}/lifecycle`, window.location.href);
     url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return url;
+  }
+
+  function setupPasswordCopy() {
+    for (const button of copyPasswordButtons) {
+      if (!(button instanceof HTMLButtonElement)) {
+        continue;
+      }
+      button.addEventListener('click', async () => {
+        if (!password) {
+          return;
+        }
+        const originalText = button.textContent || 'Copy';
+        try {
+          await navigator.clipboard.writeText(password);
+          button.textContent = 'Copied';
+        } catch {
+          button.textContent = 'Copy failed';
+        } finally {
+          window.setTimeout(() => {
+            button.textContent = originalText;
+          }, 1500);
+        }
+      });
+    }
   }
 
   function connectLifecycle() {
@@ -84,6 +124,10 @@
         showError('Received an invalid session update.');
         socket.close();
         return;
+      }
+
+      if (typeof update.password === 'string' && update.password.length > 0) {
+        setPassword(update.password);
       }
 
       if (update.state === 'starting') {
@@ -112,6 +156,7 @@
 
   refreshStatus();
   statusInterval = window.setInterval(refreshStatus, 60_000);
+  setupPasswordCopy();
   connectLifecycle();
 
   window.addEventListener('pagehide', () => {
