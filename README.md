@@ -20,7 +20,7 @@ One click and you're in a fresh [OpenCode](https://opencode.ai) workspace runnin
 flowchart LR
   B([Browser]) -- HTTP --> A[FastAPI orchestrator]
   A -- docker run --> M[[mayfly sandbox<br/>OpenCode + OpenChamber]]
-  B -. iframe<br/>:random port .-> M
+  B -. iframe<br/>:configured port range .-> M
 ```
 
 ## 🚀 Quick start
@@ -42,7 +42,9 @@ Everything lives in [.env](.env.example). The ones worth knowing:
 | | |
 | --- | --- |
 | `MAYFLY_MAX_SESSIONS` | concurrency cap |
-| `MAYFLY_DISCONNECT_GRACE` | how long an unwatched session survives |
+| `MAYFLY_HOST_PORT_START` / `MAYFLY_HOST_PORT_END` | inclusive host port range for sandbox sessions |
+| `MAYFLY_CONNECT_TIMEOUT` | how long a session waits for the first browser connect |
+| `MAYFLY_DISCONNECT_TIMEOUT` | how long an unwatched session survives |
 | `OPENAI_BASE_URL` / `OPENAI_MODEL` | LLM each sandbox talks to |
 | `OPENAI_TIMEOUT` / `OPENAI_CHUNK_TIMEOUT` | be generous with slow / cold models |
 | `TZ` | shared timezone for app + sandboxes |

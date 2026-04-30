@@ -9,7 +9,6 @@ services:
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
         NPM_REGISTRY: ${NPM_REGISTRY}
         NPM_STRICT_SSL: ${NPM_STRICT_SSL}
-        MAYFLY_PORT: ${MAYFLY_PORT}
     image: ${MAYFLY_IMAGE}
 
   app:
@@ -23,8 +22,6 @@ services:
     image: app:0.2.0
     restart: unless-stopped
     env_file: .env
-    environment:
-      TZ: ${TZ}
     ports:
       - "${APP_BIND_HOST}:${APP_PORT}:${APP_PORT}"
     volumes:

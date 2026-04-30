@@ -31,6 +31,10 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
             "context": ${OPENAI_CONTEXT_TOKENS},
             "output": ${OPENAI_OUTPUT_TOKENS}
           },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
           "variants": {
             "think": {
               "reasoningEffort": "high"

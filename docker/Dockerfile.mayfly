@@ -14,13 +14,12 @@ ARG PIP_INDEX_URL
 ARG PIP_TRUSTED_HOST
 ARG NPM_REGISTRY
 ARG NPM_STRICT_SSL
-ARG MAYFLY_PORT
 
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
     NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL} \
-    MAYFLY_PORT=${MAYFLY_PORT}
+    MAYFLY_PORT=4096
 
 RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
 RUN npm install --ignore-scripts -g opencode-ai@1.14.28 @openchamber/web@1.9.9
@@ -34,6 +33,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 USER user
 WORKDIR /home/user
 
-EXPOSE ${MAYFLY_PORT}
+EXPOSE 4096
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

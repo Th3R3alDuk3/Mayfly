@@ -38,7 +38,7 @@ class SessionManager:
             self._sessions[token] = entry
             if start_cleanup:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(token, self._settings.mayfly_start_timeout)
+                    self._close_after_idle(token, self._settings.mayfly_connect_timeout)
                 )
 
         return entry.session
@@ -56,7 +56,7 @@ class SessionManager:
                 raise RuntimeError("Session was closed during start")
             if entry.cleanup_task is None and not entry.client_connected:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(session.token, self._settings.mayfly_start_timeout)
+                    self._close_after_idle(session.token, self._settings.mayfly_connect_timeout)
                 )
 
         return session
@@ -99,7 +99,7 @@ class SessionManager:
             if entry.cleanup_task is not None:
                 return
             entry.cleanup_task = create_task(
-                self._close_after_idle(token, self._settings.mayfly_disconnect_grace)
+                self._close_after_idle(token, self._settings.mayfly_disconnect_timeout)
             )
 
     async def wait_ready(self, token: str) -> Session | None:

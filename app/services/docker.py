@@ -1,4 +1,5 @@
 from asyncio import to_thread
+from contextlib import suppress
 from logging import getLogger
 from time import monotonic, sleep
 from urllib.error import URLError
@@ -18,6 +19,9 @@ logger = getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL = 3
+
+_MAYFLY_CONTAINER_PORT = 4096
+_MAYFLY_NETWORK = "mayfly-net"
 
 _MANAGED_LABEL = "mayfly.managed"
 _MANAGED_LABEL_VALUE = "true"
@@ -44,14 +48,12 @@ class DockerRuntime:
         container: DockerContainer | None = None
         try:
             container = _run_container(self._client, session_id, self._settings)
-            ip, port = _inspect_container(
-                container, self._settings.mayfly_network, self._settings.mayfly_port
-            )
+            ip, port = _inspect_container(container, _MAYFLY_NETWORK, _MAYFLY_CONTAINER_PORT)
 
             logger.info(
                 f"Container started: {container.short_id} ({container.name} @ {ip}, host:{port}) — waiting for ready"
             )
-            _wait_ready(ip, self._settings.mayfly_port)
+            _wait_ready(ip, _MAYFLY_CONTAINER_PORT)
             logger.info(f"Container ready: {container.short_id} ({container.name})")
             return Container(id=container.id, port=port)
         except Exception:
@@ -120,43 +122,86 @@ class DockerRuntime:
 
 
 def _run_container(client: DockerClient, session_id: str, settings: Settings) -> DockerContainer:
+    last_port_error: APIError | None = None
+
+    for host_port in range(settings.mayfly_host_port_start, settings.mayfly_host_port_end + 1):
+        container: DockerContainer | None = None
+        try:
+            container = _create_session_container(client, session_id, settings, host_port)
+            container.start()
+            return container
+        except ImageNotFound as error:
+            raise RuntimeError(f"Image not found: {settings.mayfly_image}") from error
+        except APIError as error:
+            if container is not None:
+                with suppress(APIError, NotFound):
+                    container.remove(force=True)
+
+            if _is_port_binding_error(error):
+                last_port_error = error
+                logger.info(f"Mayfly host port {host_port} unavailable, trying next port")
+                continue
+
+            raise RuntimeError(f"Docker error: {error}") from error
+
+    raise RuntimeError(
+        "No available mayfly host ports in configured range "
+        f"{settings.mayfly_host_port_start}-{settings.mayfly_host_port_end}"
+    ) from last_port_error
+
+
+def _create_session_container(
+    client: DockerClient, session_id: str, settings: Settings, host_port: int
+) -> DockerContainer:
+    kwargs = _session_container_kwargs(session_id, settings, host_port)
     try:
-        return client.containers.run(
-            settings.mayfly_image,
-            detach=True,
-            name=f"mayfly-{session_id}",
-            hostname=f"mayfly-{session_id}",
-            network=settings.mayfly_network,
-            ports={f"{settings.mayfly_port}/tcp": (settings.mayfly_bind_host, None)},
-            mem_limit=settings.mayfly_memory,
-            nano_cpus=int(settings.mayfly_cpus * 1_000_000_000),
-            tmpfs={
-                "/home/user": f"size={settings.mayfly_tmpfs_size},uid=1000,exec",
-                "/tmp": "size=64m,uid=1000,exec",
-            },
-            read_only=True,
-            cap_drop=["ALL"],
-            security_opt=["no-new-privileges:true"],
-            pids_limit=256,
-            user="1000:1000",
-            environment={
-                "MAYFLY_PORT": settings.mayfly_port,
-                "OPENAI_BASE_URL": settings.openai_base_url,
-                "OPENAI_MODEL": settings.openai_model,
-                "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
-                "OPENAI_OUTPUT_TOKENS": settings.openai_output_tokens,
-                "OPENAI_TIMEOUT": settings.openai_timeout,
-                "OPENAI_CHUNK_TIMEOUT": settings.openai_chunk_timeout,
-                "TZ": settings.tz,
-            },
-            extra_hosts={"host.docker.internal": "host-gateway"},
-            auto_remove=False,
-            labels={_MANAGED_LABEL: _MANAGED_LABEL_VALUE},
-        )
-    except ImageNotFound as error:
-        raise RuntimeError(f"Image not found: {settings.mayfly_image}") from error
-    except APIError as error:
-        raise RuntimeError(f"Docker error: {error}") from error
+        return client.containers.create(settings.mayfly_image, **kwargs)
+    except ImageNotFound:
+        client.images.pull(settings.mayfly_image)
+        return client.containers.create(settings.mayfly_image, **kwargs)
+
+
+def _session_container_kwargs(session_id: str, settings: Settings, host_port: int) -> dict[str, object]:
+    return {
+        "detach": True,
+        "name": f"mayfly-{session_id}",
+        "hostname": f"mayfly-{session_id}",
+        "network": _MAYFLY_NETWORK,
+        "ports": {f"{_MAYFLY_CONTAINER_PORT}/tcp": (settings.mayfly_bind_host, host_port)},
+        "mem_limit": settings.mayfly_memory,
+        "nano_cpus": int(settings.mayfly_cpus * 1_000_000_000),
+        "tmpfs": {
+            "/home/user": f"size={settings.mayfly_tmpfs_size},uid=1000,exec",
+            "/tmp": "size=64m,uid=1000,exec",
+        },
+        "read_only": True,
+        "cap_drop": ["ALL"],
+        "security_opt": ["no-new-privileges:true"],
+        "pids_limit": 256,
+        "user": "1000:1000",
+        "environment": {
+            "MAYFLY_PORT": _MAYFLY_CONTAINER_PORT,
+            "OPENAI_BASE_URL": settings.openai_base_url,
+            "OPENAI_MODEL": settings.openai_model,
+            "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
+            "OPENAI_OUTPUT_TOKENS": settings.openai_output_tokens,
+            "OPENAI_TIMEOUT": settings.openai_timeout,
+            "OPENAI_CHUNK_TIMEOUT": settings.openai_chunk_timeout,
+            "TZ": settings.tz,
+        },
+        "extra_hosts": {"host.docker.internal": "host-gateway"},
+        "auto_remove": False,
+        "labels": {_MANAGED_LABEL: _MANAGED_LABEL_VALUE},
+    }
+
+
+def _is_port_binding_error(error: APIError) -> bool:
+    message = f"{getattr(error, 'explanation', '')} {error}".lower()
+    return (
+        "port is already allocated" in message
+        or "bind: address already in use" in message
+        or ("listen tcp" in message and "address already in use" in message)
+    )
 
 
 def _inspect_container(container: DockerContainer, network: str, container_port: int) -> tuple[str, int]:
