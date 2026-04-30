@@ -1,7 +1,7 @@
-from asyncio import FIRST_COMPLETED, CancelledError, Task, create_task, wait
-from contextlib import suppress
 from logging import getLogger
+from urllib.parse import urlsplit
 
+from anyio import create_task_group
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from app.config import SettingsDep
@@ -44,6 +44,22 @@ def _url_host(host: str) -> str:
     if ":" in host and not host.startswith("["):
         return f"[{host}]"
     return host
+
+
+async def _drain(websocket: WebSocket) -> None:
+    while True:
+        await websocket.receive_text()
+
+
+def _is_same_origin(websocket: WebSocket) -> bool:
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host")
+    if not origin or not host:
+        return False
+    parsed = urlsplit(origin)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return parsed.netloc == host
 
 
 @router.get(
@@ -119,6 +135,10 @@ async def session_lifecycle(
     manager: SessionManager = websocket.app.state.manager
     host = _client_host(websocket.url.hostname, settings.public_host)
 
+    if not _is_same_origin(websocket):
+        await websocket.close(code=4003, reason="forbidden origin")
+        return
+
     await websocket.accept()
 
     result = await manager.confirm_connected(token)
@@ -131,8 +151,6 @@ async def session_lifecycle(
 
     closed_by_manager = False
     arm_disconnect_timeout = True
-    receive_task: Task[str] | None = None
-    closing_task: Task[None] | None = None
 
     try:
         logger.info(f"Lifecycle WS connected: {token}")
@@ -165,39 +183,24 @@ async def session_lifecycle(
                 await manager.close(token)
             return
 
-        receive_task = create_task(websocket.receive_text())
-        closing_task = create_task(manager.wait_closing(token))
+        try:
+            async with create_task_group() as tg:
+                async def watch_close() -> None:
+                    nonlocal closed_by_manager
+                    await manager.wait_closing(token)
+                    closed_by_manager = True
+                    tg.cancel_scope.cancel()
 
-        while True:
-            done, _ = await wait(
-                {receive_task, closing_task},
-                return_when=FIRST_COMPLETED,
-            )
+                tg.start_soon(watch_close)
+                await _drain(websocket)
+        except* WebSocketDisconnect:
+            logger.info(f"Lifecycle WS disconnected: {token}")
 
-            if receive_task in done:
-                receive_task.result()
-                receive_task = create_task(websocket.receive_text())
-
-            if closing_task in done:
-                closed_by_manager = True
-                await websocket.close(code=1001, reason="session closed")
-                return
-    except WebSocketDisconnect:
-        logger.info(f"Lifecycle WS disconnected: {token}")
+        if closed_by_manager:
+            await websocket.close(code=1001, reason="session closed")
     except Exception:
         logger.exception(f"Lifecycle WS error: {token}")
     finally:
-        for task in (receive_task, closing_task):
-            if task is None:
-                continue
-            if not task.done():
-                task.cancel()
-                with suppress(CancelledError):
-                    await task
-            else:
-                with suppress(CancelledError, Exception):
-                    task.result()
-
         if closed_by_manager:
             logger.info(f"Lifecycle WS closed by manager: {token}")
         elif arm_disconnect_timeout:

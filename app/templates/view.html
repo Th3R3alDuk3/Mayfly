@@ -29,13 +29,6 @@
               class="max-w-48 truncate font-mono font-semibold
                      text-emerald-700 dark:text-emerald-400"
               data-session-password-value></code>
-        <button class="rounded-md border border-neutral-300 px-2 py-0.5
-                       text-neutral-700 hover:bg-neutral-200
-                       dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                type="button"
-                data-copy-password>
-          Copy
-        </button>
       </div>
       <div class="flex h-7 min-w-12 items-center justify-center rounded-md
                   border border-neutral-200 bg-neutral-100 px-3
@@ -72,6 +65,7 @@
     <iframe id="session-frame"
             class="hidden min-h-0 flex-1 w-full border-0"
             title="Mayfly session"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
             allow="clipboard-read; clipboard-write"
             referrerpolicy="no-referrer"></iframe>
   </main>

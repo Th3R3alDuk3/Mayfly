@@ -17,8 +17,6 @@
   const statusValue = document.getElementById('session-status-value');
   const passwordPanels = Array.from(document.querySelectorAll('[data-session-password-panel]'));
   const passwordValues = Array.from(document.querySelectorAll('[data-session-password-value]'));
-  const copyPasswordButtons = Array.from(document.querySelectorAll('[data-copy-password]'));
-
   if (
     !token ||
     !(frame instanceof HTMLIFrameElement) ||
@@ -89,30 +87,6 @@
     return url;
   }
 
-  function setupPasswordCopy() {
-    for (const button of copyPasswordButtons) {
-      if (!(button instanceof HTMLButtonElement)) {
-        continue;
-      }
-      button.addEventListener('click', async () => {
-        if (!password) {
-          return;
-        }
-        const originalText = button.textContent || 'Copy';
-        try {
-          await navigator.clipboard.writeText(password);
-          button.textContent = 'Copied';
-        } catch {
-          button.textContent = 'Copy failed';
-        } finally {
-          window.setTimeout(() => {
-            button.textContent = originalText;
-          }, 1500);
-        }
-      });
-    }
-  }
-
   function connectLifecycle() {
     socket = new WebSocket(lifecycleUrl());
 
@@ -156,7 +130,6 @@
 
   refreshStatus();
   statusInterval = window.setInterval(refreshStatus, 60_000);
-  setupPasswordCopy();
   connectLifecycle();
 
   window.addEventListener('pagehide', () => {

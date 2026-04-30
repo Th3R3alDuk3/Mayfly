@@ -170,7 +170,7 @@ class SessionManager:
         try:
             await gather(*(self.close(t) for t in tokens))
         finally:
-            self._runtime.close()
+            await self._runtime.close()
 
     async def cleanup_stale_containers(self) -> None:
         await self._runtime.remove_managed_containers()

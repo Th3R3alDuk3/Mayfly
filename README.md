@@ -23,6 +23,8 @@ flowchart LR
   B -. iframe<br/>:configured port range .-> M
 ```
 
+Sandboxes run unprivileged on a read-only rootfs with all caps dropped, `no-new-privileges`, mem/CPU/PID caps, and an ephemeral tmpfs `$HOME` — wiped on disconnect.
+
 ## 🚀 Quick start
 
 You need an OpenAI-compatible inference endpoint reachable from the host (e.g. vLLM, llama.cpp, Ollama, LM Studio, or the OpenAI API itself). Point `OPENAI_BASE_URL` / `OPENAI_MODEL` at it in `.env`.
