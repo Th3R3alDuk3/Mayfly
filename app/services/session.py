@@ -5,6 +5,7 @@ from asyncio import (
     gather,
     sleep,
 )
+from contextlib import suppress
 from logging import getLogger
 
 from app.config import Settings
@@ -38,7 +39,11 @@ class SessionManager:
             self._sessions[token] = entry
             if start_cleanup:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(token, self._settings.mayfly_connect_timeout)
+                    self._close_after_timeout(
+                        token,
+                        self._settings.mayfly_connect_timeout,
+                        "connect",
+                    )
                 )
 
         return entry.session
@@ -56,7 +61,11 @@ class SessionManager:
                 raise RuntimeError("Session was closed during start")
             if entry.cleanup_task is None and not entry.client_connected:
                 entry.cleanup_task = create_task(
-                    self._close_after_idle(session.token, self._settings.mayfly_connect_timeout)
+                    self._close_after_timeout(
+                        session.token,
+                        self._settings.mayfly_connect_timeout,
+                        "connect",
+                    )
                 )
 
         return session
@@ -90,7 +99,7 @@ class SessionManager:
             cleanup_task.cancel()
         return ConnectResult.OK
 
-    async def schedule_idle_close(self, token: str) -> None:
+    async def schedule_disconnect_close(self, token: str) -> None:
         async with self._lock:
             entry = self._sessions.get(token)
             if entry is None or entry.session.state == SessionState.CLOSING:
@@ -99,7 +108,11 @@ class SessionManager:
             if entry.cleanup_task is not None:
                 return
             entry.cleanup_task = create_task(
-                self._close_after_idle(token, self._settings.mayfly_disconnect_timeout)
+                self._close_after_timeout(
+                    token,
+                    self._settings.mayfly_disconnect_timeout,
+                    "disconnect",
+                )
             )
 
     async def wait_ready(self, token: str) -> Session | None:
@@ -154,8 +167,10 @@ class SessionManager:
             tokens = list(self._sessions.keys())
 
         logger.info(f"Shutting down {len(tokens)} session(s)")
-        await gather(*(self.close(t) for t in tokens))
-        self._runtime.close()
+        try:
+            await gather(*(self.close(t) for t in tokens))
+        finally:
+            self._runtime.close()
 
     async def cleanup_stale_containers(self) -> None:
         await self._runtime.remove_managed_containers()
@@ -197,7 +212,7 @@ class SessionManager:
         if stop_container_id is not None:
             await self._runtime.stop_container(stop_container_id)
 
-    async def _close_after_idle(self, token: str, delay: float) -> None:
+    async def _close_after_timeout(self, token: str, delay: float, timeout_name: str) -> None:
         try:
             await sleep(delay)
         except CancelledError:
@@ -211,7 +226,7 @@ class SessionManager:
             if entry.client_connected:
                 return
 
-        logger.warning(f"Session {token} idle for {delay}s — closing")
+        logger.warning(f"Session {token} reached {timeout_name} timeout after {delay}s — closing")
         await self.close(token)
 
     async def _close_session(self, token: str, entry: SessionEntry) -> None:
@@ -222,11 +237,9 @@ class SessionManager:
         cleanup_succeeded = False
         try:
             if entry.start_task is not None:
-                try:
+                with suppress(Exception):
                     await entry.start_task
-                except Exception:
-                    pass
-            if entry.session.container:
+            if entry.session.container is not None:
                 await self._runtime.stop_container(entry.session.container.id)
             cleanup_succeeded = True
         except Exception as error:

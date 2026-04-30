@@ -72,6 +72,7 @@ class DockerRuntime:
             logger.info(f"Container already gone: {container_id}")
             return
 
+        force_remove = False
         try:
             container.stop(timeout=5)
         except NotFound:
@@ -79,27 +80,17 @@ class DockerRuntime:
             return
         except APIError as error:
             logger.warning(f"Failed to stop container {container_id}, forcing removal: {error}")
-            try:
-                container.remove(force=True)
-            except NotFound:
-                logger.info(f"Container already removed: {container_id}")
-                return
-            except APIError as remove_error:
-                raise RuntimeError(
-                    f"Failed to stop or force-remove container {container_id}: {remove_error}"
-                ) from remove_error
-            logger.info(f"Container force removed: {container_id}")
-            return
+            force_remove = True
 
         try:
-            container.remove()
+            container.remove(force=force_remove)
         except NotFound:
             logger.info(f"Container already removed: {container_id}")
             return
         except APIError as error:
             raise RuntimeError(f"Failed to remove container {container_id}: {error}") from error
 
-        logger.info(f"Container removed: {container_id}")
+        logger.info(f"Container {'force ' if force_remove else ''}removed: {container_id}")
 
     def _remove_managed_containers(self) -> None:
         try:
@@ -206,13 +197,13 @@ def _is_port_binding_error(error: APIError) -> bool:
 
 def _inspect_container(container: DockerContainer, network: str, container_port: int) -> tuple[str, int]:
     container.reload()
-    settings = container.attrs.get("NetworkSettings", {})
+    network_settings = container.attrs.get("NetworkSettings", {})
 
-    ip = settings.get("Networks", {}).get(network, {}).get("IPAddress")
+    ip = network_settings.get("Networks", {}).get(network, {}).get("IPAddress")
     if not ip:
         raise RuntimeError(f"Container {container.short_id}: no IP on {network}")
 
-    bindings = settings.get("Ports", {}).get(f"{container_port}/tcp") or []
+    bindings = network_settings.get("Ports", {}).get(f"{container_port}/tcp") or []
     if not bindings:
         raise RuntimeError(f"Container {container.short_id}: no host port mapped for {container_port}/tcp")
 
@@ -224,7 +215,8 @@ def _wait_ready(host: str, port: int) -> None:
     deadline = monotonic() + _HEALTH_TIMEOUT
     while monotonic() < deadline:
         try:
-            urlopen(url, timeout=3).close()
+            with urlopen(url, timeout=3):
+                pass
             return
         except (URLError, TimeoutError, ConnectionError, OSError):
             sleep(_HEALTH_POLL)

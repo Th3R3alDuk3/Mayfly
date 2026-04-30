@@ -1,103 +1,53 @@
 {% extends "base.html" %}
 
+{% block title %}Mayfly Session{% endblock %}
+
 {% block content %}
-<div class="flex flex-col h-full">
-  <header class="flex items-center justify-between shrink-0 h-14 px-5
-                 border-b border-neutral-200 dark:border-neutral-800">
+<div class="flex h-full flex-col">
+  <header class="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5 dark:border-neutral-800">
     <div class="flex items-center gap-2.5">
-      <img src="/logo.png" alt="" width="512" height="512"
-           fetchpriority="high" decoding="async" class="h-12 w-12">
+      <img class="block h-12 w-12"
+           src="/logo.png"
+           alt=""
+           width="512"
+           height="512"
+           decoding="async"
+           fetchpriority="high">
       <span class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
         Mayfly
       </span>
     </div>
-    <div id="status-pill"
-         class="flex items-center justify-center h-7 min-w-12 px-3 rounded-full
-                text-xs text-neutral-500 dark:text-neutral-400
-                bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800"
-         title="Containers: active / limit">
-      <span id="status-value" aria-live="polite"
-            class="block text-center leading-none font-mono tabular-nums">
-        &ndash;/&ndash;
+    <div class="flex h-7 min-w-12 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 px-3 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
+         title="Sessions: active / limit">
+      <span id="session-status-value"
+            class="block text-center font-mono leading-none tabular-nums"
+            aria-live="polite">
+        -/-
       </span>
     </div>
   </header>
 
-  <main class="flex-1 min-h-0">
-    <div id="loading-panel" class="flex flex-col items-center justify-center h-full gap-5">
-      <img src="/logo.png" alt="" width="512" height="512"
-           decoding="async" class="h-56 w-56">
-      <span id="ready-text" aria-live="polite"
-            class="text-sm text-neutral-500 dark:text-neutral-400">
-        Starting Mayfly…
+  <main class="min-h-0 flex-1" data-session-view data-session-token="{{ token }}">
+    <div id="session-loading" class="flex h-full flex-col items-center justify-center gap-5">
+      <img class="block h-56 w-56"
+           src="/logo.png"
+           alt=""
+           width="512"
+           height="512"
+           decoding="async">
+      <span id="session-message"
+            class="text-sm text-neutral-500 dark:text-neutral-400"
+            aria-live="polite">
+        Starting Mayfly...
       </span>
-      <div id="spinner">{% include "_spinner.html" %}</div>
+      <div id="session-spinner">{% include "_loading_spinner.html" %}</div>
     </div>
     <iframe id="session-frame"
             class="hidden h-full w-full border-0"
+            title="Mayfly session"
             allow="clipboard-read; clipboard-write"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
-            referrerpolicy="no-referrer"></iframe>
+            referrerpolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"></iframe>
   </main>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  const statusValue = document.getElementById('status-value');
-  const loadingPanel = document.getElementById('loading-panel');
-  const readyText = document.getElementById('ready-text');
-  const spinner = document.getElementById('spinner');
-  const sessionFrame = document.getElementById('session-frame');
-  const token = "{{ token }}";
-
-  async function refreshStatus() {
-    try {
-      const res = await fetch('/sessions/status', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { active, limit } = await res.json();
-      statusValue.textContent = `${active}/${limit}`;
-    } catch {
-      statusValue.textContent = '–/–';
-    }
-  }
-
-  function showSession(url) {
-    if (!url) {
-      showError('Session is missing a container URL.');
-      return;
-    }
-    sessionFrame.src = url;
-    loadingPanel.classList.add('hidden');
-    sessionFrame.classList.remove('hidden');
-  }
-
-  function showError(msg) {
-    readyText.textContent = msg;
-    spinner.classList.add('hidden');
-  }
-
-  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${wsProto}://${location.host}/sessions/${token}/lifecycle`);
-
-  ws.onmessage = (event) => {
-    const { state, error, url } = JSON.parse(event.data);
-    if (state === 'starting') {
-      readyText.textContent = 'Starting Mayfly…';
-    } else if (state === 'ready') {
-      showSession(url);
-    } else if (state === 'error') {
-      showError(error || 'Session failed to start.');
-    }
-  };
-
-  ws.onclose = (event) => {
-    if (sessionFrame.classList.contains('hidden')) {
-      showError(event.reason || 'Session ended.');
-    }
-  };
-
-  refreshStatus();
-  setInterval(refreshStatus, 60_000);
-</script>
 {% endblock %}

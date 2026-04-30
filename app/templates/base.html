@@ -1,18 +1,17 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full">
+<!doctype html>
+<html class="h-full" lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Disposable, browser-based coding sessions in isolated Docker sandboxes.">
-  <meta name="color-scheme" content="dark light">
+  <meta name="color-scheme" content="light dark">
   <link rel="icon" type="image/png" href="/logo.png">
   <link rel="apple-touch-icon" href="/logo.png">
   <title>{% block title %}Mayfly{% endblock %}</title>
   <script src="/tailwindcss-browser-4.2.4.js"></script>
+  <script src="/mayfly.js" defer></script>
 </head>
-<body class="h-full antialiased text-neutral-900 dark:text-neutral-200
-             bg-neutral-50 dark:bg-neutral-950">
+<body class="h-full bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-200">
   {% block content %}{% endblock %}
-  {% block scripts %}{% endblock %}
 </body>
 </html>

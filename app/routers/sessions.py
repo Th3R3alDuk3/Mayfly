@@ -1,4 +1,4 @@
-from asyncio import FIRST_COMPLETED, CancelledError, create_task, wait
+from asyncio import FIRST_COMPLETED, CancelledError, Task, create_task, wait
 from contextlib import suppress
 from logging import getLogger
 
@@ -81,7 +81,7 @@ async def delete_session(
 
     manager: SessionManager = request.app.state.manager
 
-    if not manager.get(token):
+    if manager.get(token) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
@@ -111,32 +111,41 @@ async def session_lifecycle(
         await websocket.close(code=4009, reason="session already open")
         return
 
-    logger.info(f"Lifecycle WS connected: {token}")
-
-    session = manager.get(token)
-    if session is None:
-        await websocket.close(code=4004, reason="unknown token")
-        return
-
-    await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
-
-    if session.state == SessionState.STARTING:
-        session = await manager.wait_ready(token)
-        if session is None:
-            await websocket.close(code=4004, reason="unknown token")
-            return
-        await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
-
-    if session.state != SessionState.READY:
-        await websocket.close(code=1011, reason=session.error or "session not ready")
-        await manager.close(token)
-        return
-
     closed_by_manager = False
-    receive_task = create_task(websocket.receive_text())
-    closing_task = create_task(manager.wait_closing(token))
+    arm_disconnect_timeout = True
+    receive_task: Task[str] | None = None
+    closing_task: Task[None] | None = None
 
     try:
+        logger.info(f"Lifecycle WS connected: {token}")
+
+        session = manager.get(token)
+        if session is None:
+            arm_disconnect_timeout = False
+            await websocket.close(code=4004, reason="unknown token")
+            return
+
+        await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
+
+        if session.state == SessionState.STARTING:
+            session = await manager.wait_ready(token)
+            if session is None:
+                arm_disconnect_timeout = False
+                await websocket.close(code=4004, reason="unknown token")
+                return
+            await websocket.send_json(_lifecycle_event(session, settings.public_host).model_dump())
+
+        if session.state != SessionState.READY:
+            arm_disconnect_timeout = False
+            try:
+                await websocket.close(code=1011, reason=session.error or "session not ready")
+            finally:
+                await manager.close(token)
+            return
+
+        receive_task = create_task(websocket.receive_text())
+        closing_task = create_task(manager.wait_closing(token))
+
         while True:
             done, _ = await wait(
                 {receive_task, closing_task},
@@ -157,6 +166,8 @@ async def session_lifecycle(
         logger.exception(f"Lifecycle WS error: {token}")
     finally:
         for task in (receive_task, closing_task):
+            if task is None:
+                continue
             if not task.done():
                 task.cancel()
                 with suppress(CancelledError):
@@ -167,6 +178,6 @@ async def session_lifecycle(
 
         if closed_by_manager:
             logger.info(f"Lifecycle WS closed by manager: {token}")
-        else:
-            logger.info(f"Lifecycle WS closed: {token} — arming grace timeout")
-            await manager.schedule_idle_close(token)
+        elif arm_disconnect_timeout:
+            logger.info(f"Lifecycle WS closed: {token} — starting disconnect timeout")
+            await manager.schedule_disconnect_close(token)

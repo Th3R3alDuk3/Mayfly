@@ -2,36 +2,30 @@
 
 {% block content %}
 <main class="h-full">
-  <div id="loading" class="flex flex-col items-center justify-center h-full gap-5">
-    <img src="/logo.png" alt="Mayfly" width="512" height="512"
-         fetchpriority="high" decoding="async" class="h-56 w-56">
-    <span id="status-text" aria-live="polite"
-          class="text-sm text-neutral-500 dark:text-neutral-400">
-      Starting Mayfly…
+  <div class="flex h-full flex-col items-center justify-center gap-5">
+    <img class="block h-56 w-56"
+         src="/logo.png"
+         alt="Mayfly"
+         width="512"
+         height="512"
+         decoding="async"
+         fetchpriority="high">
+    <span class="text-sm text-neutral-500 dark:text-neutral-400" aria-live="polite">
+      Starting Mayfly...
     </span>
-    {% include "_spinner.html" %}
-    <form id="start-form" method="post" action="/view" class="hidden"></form>
+    {% include "_loading_spinner.html" %}
+    <form class="hidden" method="post" action="/view" data-autostart-form></form>
     <noscript>
       <form method="post" action="/view">
-        <button type="submit"
-                class="px-5 py-2 rounded-md text-sm font-medium
-                       text-neutral-900 dark:text-neutral-100
-                       bg-neutral-200 dark:bg-neutral-800
-                       hover:bg-neutral-300 dark:hover:bg-neutral-700
-                       border border-neutral-300 dark:border-neutral-700">
+        <button class="rounded-md border border-neutral-300 bg-neutral-200 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+                type="submit">
           Start session
         </button>
       </form>
-      <p class="text-sm text-neutral-500 dark:text-neutral-400 max-w-sm text-center px-6">
+      <p class="max-w-sm px-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
         JavaScript is required for live status updates.
       </p>
     </noscript>
   </div>
 </main>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  document.getElementById('start-form').submit();
-</script>
 {% endblock %}
