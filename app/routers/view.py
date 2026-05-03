@@ -29,7 +29,6 @@ async def create_view_session(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> RedirectResponse:
-
     manager: SessionManager = request.app.state.manager
 
     try:
@@ -53,7 +52,6 @@ async def view_session(
     token: str,
     request: Request,
 ) -> HTMLResponse:
-
     manager: SessionManager = request.app.state.manager
 
     session = manager.get(token)
@@ -71,7 +69,6 @@ async def http_exception_handler(
     request: Request,
     exception: StarletteHTTPException,
 ) -> Response:
-
     if "text/html" in request.headers.get("accept", ""):
         return templates.TemplateResponse(
             request=request,

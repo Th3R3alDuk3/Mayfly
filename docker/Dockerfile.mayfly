@@ -18,8 +18,7 @@ ARG NPM_STRICT_SSL
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
-    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL} \
-    MAYFLY_PORT=4096
+    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
 
 RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
 RUN npm install --ignore-scripts -g opencode-ai@1.14.33 @openchamber/web@1.9.10
@@ -33,6 +32,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 USER user
 WORKDIR /home/user
 
-EXPOSE 4096
+# Port comes from MAYFLY_PORT env (set by app at container runtime).
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

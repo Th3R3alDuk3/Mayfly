@@ -1,11 +1,20 @@
+from collections.abc import AsyncIterator
+from hmac import compare_digest
 from logging import getLogger
 from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
 from anyio import create_task_group
-from hmac import compare_digest
-
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
 from app.config import SettingsDep
 from app.models.session import (
@@ -30,29 +39,19 @@ def _lifecycle_event(
     *,
     include_password: bool = False,
 ) -> SessionLifecycleEvent:
+    url_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
     url = (
-        f"http://{_url_host(host)}:{session.container.port}/"
+        f"http://{url_host}:{session.container.port}/"
         if session.state == SessionState.READY and session.container is not None
         else None
     )
     password = session.password if include_password else None
-    return SessionLifecycleEvent(state=session.state, error=session.error, url=url, password=password)
-
-
-def _client_host(candidate: str | None, fallback: str) -> str:
-    host = (candidate or "").strip()
-    return host or fallback
-
-
-def _url_host(host: str) -> str:
-    if ":" in host and not host.startswith("["):
-        return f"[{host}]"
-    return host
-
-
-async def _drain(websocket: WebSocket) -> None:
-    while True:
-        await websocket.receive_text()
+    return SessionLifecycleEvent(
+        state=session.state,
+        error=session.error,
+        url=url,
+        password=password,
+    )
 
 
 def _is_same_origin(websocket: WebSocket) -> bool:
@@ -75,7 +74,6 @@ def _is_same_origin(websocket: WebSocket) -> bool:
 async def get_sessions_status(
     request: Request,
 ) -> SessionStatusResponse:
-
     manager: SessionManager = request.app.state.manager
     return manager.status()
 
@@ -90,7 +88,6 @@ async def get_sessions_status(
 async def create_session(
     request: Request,
 ) -> SessionCreateResponse:
-
     manager: SessionManager = request.app.state.manager
 
     try:
@@ -118,7 +115,6 @@ async def upload_to_session(
     file: UploadFile = File(...),
     x_mayfly_password: str = Header(default=""),
 ) -> None:
-
     manager: SessionManager = request.app.state.manager
 
     session = manager.get(token)
@@ -129,12 +125,12 @@ async def upload_to_session(
 
     raw_name = file.filename or ""
     name = PurePosixPath(raw_name.replace("\\", "/")).name
-    if not name or name in {".", ".."}:
+    if not name or name in {".", ".."} or "\x00" in name:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     limit = parse_bytes(settings.mayfly_transfer_limit)
 
-    async def chunks():
+    async def chunks() -> AsyncIterator[bytes]:
         sent = 0
         while True:
             chunk = await file.read(64 * 1024)
@@ -165,7 +161,6 @@ async def delete_session(
     token: str,
     request: Request,
 ) -> None:
-
     manager: SessionManager = request.app.state.manager
 
     if manager.get(token) is None:
@@ -177,17 +172,14 @@ async def delete_session(
         raise HTTPException(status_code=500, detail=str(error)) from error
 
 
-@router.websocket(
-    path="/sessions/{token}/lifecycle"
-)
+@router.websocket(path="/sessions/{token}/lifecycle")
 async def session_lifecycle(
     token: str,
     websocket: WebSocket,
     settings: SettingsDep,
 ) -> None:
-
     manager: SessionManager = websocket.app.state.manager
-    host = _client_host(websocket.url.hostname, settings.public_host)
+    host = (websocket.url.hostname or "").strip() or settings.public_host
 
     if not _is_same_origin(websocket):
         await websocket.close(code=4003, reason="forbidden origin")
@@ -246,7 +238,8 @@ async def session_lifecycle(
                     tg.cancel_scope.cancel()
 
                 tg.start_soon(watch_close)
-                await _drain(websocket)
+                while True:
+                    await websocket.receive_text()
         except* WebSocketDisconnect:
             logger.info(f"Lifecycle WS disconnected: {token}")
 

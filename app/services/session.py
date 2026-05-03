@@ -5,6 +5,7 @@ from asyncio import (
     gather,
     sleep,
 )
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from logging import getLogger
 
@@ -28,6 +29,20 @@ class SessionManager:
         self._runtime = DockerRuntime(settings)
         self._sessions: dict[str, SessionEntry] = {}
         self._lock = Lock()
+
+    def get(self, token: str) -> Session | None:
+        entry = self._sessions.get(token)
+        if entry is None:
+            return None
+        return entry.session
+
+    def status(self) -> SessionStatusResponse:
+        active = len(self._sessions)
+        return SessionStatusResponse(
+            active=active,
+            available=max(0, self._settings.mayfly_max_sessions - active),
+            limit=self._settings.mayfly_max_sessions,
+        )
 
     async def reserve(self, *, start_cleanup: bool = True) -> Session:
         entry = SessionEntry(session=Session())
@@ -83,6 +98,19 @@ class SessionManager:
 
         await start_task
 
+    async def wait_ready(self, token: str) -> Session | None:
+        entry = self._sessions.get(token)
+        if entry is None:
+            return None
+        await entry.ready_event.wait()
+        return entry.session
+
+    async def wait_closing(self, token: str) -> None:
+        entry = self._sessions.get(token)
+        if entry is None:
+            return
+        await entry.close_event.wait()
+
     async def confirm_connected(self, token: str) -> ConnectResult:
         async with self._lock:
             entry = self._sessions.get(token)
@@ -115,32 +143,13 @@ class SessionManager:
                 )
             )
 
-    async def wait_ready(self, token: str) -> Session | None:
+    async def upload(self, token: str, filename: str, chunks: AsyncIterator[bytes]) -> None:
         entry = self._sessions.get(token)
         if entry is None:
-            return None
-        await entry.ready_event.wait()
-        return entry.session
-
-    async def wait_closing(self, token: str) -> None:
-        entry = self._sessions.get(token)
-        if entry is None:
-            return
-        await entry.close_event.wait()
-
-    def get(self, token: str) -> Session | None:
-        entry = self._sessions.get(token)
-        if entry is None:
-            return None
-        return entry.session
-
-    def status(self) -> SessionStatusResponse:
-        active = len(self._sessions)
-        return SessionStatusResponse(
-            active=active,
-            available=max(0, self._settings.mayfly_max_sessions - active),
-            limit=self._settings.mayfly_max_sessions,
-        )
+            raise RuntimeError("Session not found")
+        if entry.session.state != SessionState.READY or entry.session.container is None:
+            raise RuntimeError("Session not ready")
+        await self._runtime.upload_to_workspace(entry.session.container.id, filename, chunks)
 
     async def close(self, token: str, *, raise_errors: bool = False) -> None:
         async with self._lock:
@@ -175,14 +184,6 @@ class SessionManager:
     async def cleanup_stale_containers(self) -> None:
         await self._runtime.remove_managed_containers()
 
-    async def upload(self, token: str, filename: str, chunks) -> None:
-        entry = self._sessions.get(token)
-        if entry is None:
-            raise RuntimeError("Session not found")
-        if entry.session.state != SessionState.READY or entry.session.container is None:
-            raise RuntimeError("Session not ready")
-        await self._runtime.upload_to_workspace(entry.session.container.id, filename, chunks)
-
     async def _start_session_container(
         self,
         token: str,
@@ -209,7 +210,11 @@ class SessionManager:
         stop_container_id: str | None = None
         async with self._lock:
             current = self._sessions.get(token)
-            if current is None or current is not entry or current.session.state == SessionState.CLOSING:
+            if (
+                current is None
+                or current is not entry
+                or current.session.state == SessionState.CLOSING
+            ):
                 stop_container_id = container.id
             else:
                 current.session.state = SessionState.READY

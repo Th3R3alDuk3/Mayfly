@@ -2,6 +2,7 @@
 set -e
 
 : "${OPENAI_BASE_URL:?}"
+: "${OPENAI_API_KEY:?}"
 : "${OPENAI_MODEL:?}"
 : "${OPENAI_CONTEXT_TOKENS:?}"
 : "${OPENAI_OUTPUT_TOKENS:?}"
@@ -26,6 +27,7 @@ cat > "${OPENCODE_DATA_DIR}/opencode.json" <<EOF
       "name": "Mayfly",
       "options": {
         "baseURL": "${OPENAI_BASE_URL}",
+        "apiKey": "${OPENAI_API_KEY}",
         "timeout": ${OPENAI_TIMEOUT},
         "chunkTimeout": ${OPENAI_CHUNK_TIMEOUT}
       },

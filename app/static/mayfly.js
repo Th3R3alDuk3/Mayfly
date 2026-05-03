@@ -15,8 +15,11 @@
   const message = document.getElementById('session-message');
   const spinner = document.getElementById('session-spinner');
   const statusValue = document.getElementById('session-status-value');
-  const passwordPanels = Array.from(document.querySelectorAll('[data-session-password-panel]'));
   const passwordValues = Array.from(document.querySelectorAll('[data-session-password-value]'));
+  const passwordModal = document.querySelector('[data-session-password-modal]');
+  const passwordCopyButton = document.querySelector('[data-session-password-copy]');
+  const passwordCopyText = document.querySelector('[data-session-password-copy-text]');
+  const passwordDismissButton = document.querySelector('[data-session-password-dismiss]');
   const uploadInput = document.querySelector('[data-upload-input]');
   const uploadText = document.querySelector('[data-upload-text]');
   if (
@@ -34,6 +37,7 @@
   let terminalMessageShown = false;
   let password = '';
   let socket;
+  let passwordModalShown = false;
 
   async function refreshStatus() {
     try {
@@ -103,12 +107,11 @@
       window.setTimeout(() => {
         if (uploadText) uploadText.textContent = original || 'Upload';
       }, 1500);
-    } catch (error) {
+    } catch {
       if (uploadText) uploadText.textContent = 'Failed';
       window.setTimeout(() => {
         if (uploadText) uploadText.textContent = original || 'Upload';
       }, 2000);
-      console.error('Upload failed:', error);
     } finally {
       input.value = '';
       input.disabled = false;
@@ -124,12 +127,54 @@
     for (const element of passwordValues) {
       element.textContent = value;
     }
-    for (const panel of passwordPanels) {
-      if (panel instanceof HTMLElement) {
-        panel.hidden = false;
+    if (!passwordModalShown && passwordModal instanceof HTMLElement) {
+      passwordModalShown = true;
+      passwordModal.hidden = false;
+      passwordModal.classList.remove('hidden');
+      passwordModal.classList.add('flex');
+      if (passwordDismissButton instanceof HTMLElement) {
+        passwordDismissButton.focus();
       }
     }
   }
+
+  function dismissPasswordModal() {
+    if (!(passwordModal instanceof HTMLElement)) return;
+    passwordModal.hidden = true;
+    passwordModal.classList.add('hidden');
+    passwordModal.classList.remove('flex');
+  }
+
+  async function copyPassword() {
+    if (!password) return;
+    const original = passwordCopyText ? passwordCopyText.textContent : '';
+    try {
+      await navigator.clipboard.writeText(password);
+      if (passwordCopyText) passwordCopyText.textContent = 'Copied';
+    } catch {
+      if (passwordCopyText) passwordCopyText.textContent = 'Failed';
+    }
+    window.setTimeout(() => {
+      if (passwordCopyText) passwordCopyText.textContent = original || 'Copy';
+    }, 1500);
+  }
+
+  if (passwordCopyButton instanceof HTMLElement) {
+    passwordCopyButton.addEventListener('click', copyPassword);
+  }
+  if (passwordDismissButton instanceof HTMLElement) {
+    passwordDismissButton.addEventListener('click', dismissPasswordModal);
+  }
+  if (passwordModal instanceof HTMLElement) {
+    passwordModal.addEventListener('click', (event) => {
+      if (event.target === passwordModal) dismissPasswordModal();
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && passwordModal instanceof HTMLElement && !passwordModal.hidden) {
+      dismissPasswordModal();
+    }
+  });
 
   function lifecycleUrl() {
     const url = new URL(`/sessions/${encodeURIComponent(token)}/lifecycle`, window.location.href);
@@ -184,7 +229,7 @@
 
   window.addEventListener('pagehide', () => {
     window.clearInterval(statusInterval);
-    if (socket instanceof WebSocket && socket.readyState === WebSocket.OPEN) {
+    if (socket instanceof WebSocket && socket.readyState < WebSocket.CLOSING) {
       socket.close(1000, 'page unloaded');
     }
   });

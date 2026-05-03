@@ -32,8 +32,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     manager = SessionManager(settings)
     await manager.cleanup_stale_containers()
     app.state.manager = manager
-    yield
-    await app.state.manager.close_all()
+    try:
+        yield
+    finally:
+        await app.state.manager.close_all()
 
 
 app = FastAPIOffline(title="Mayfly")

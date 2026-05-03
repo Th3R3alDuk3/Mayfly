@@ -1,14 +1,20 @@
 from asyncio import sleep
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from logging import getLogger
 from shlex import quote
-from typing import AsyncIterator
 
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
 from aiodocker.exceptions import DockerError
 from httpx import AsyncClient, HTTPStatusError, RequestError
-from tenacity import AsyncRetrying, RetryError, retry_if_exception_type, stop_after_delay, wait_fixed
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    retry_if_exception_type,
+    stop_after_delay,
+    wait_fixed,
+)
 
 from app.config import Settings
 from app.models.docker import Container
@@ -22,12 +28,22 @@ _HEALTH_POLL = 3
 _UPLOAD_EXEC_TIMEOUT = 10
 _UPLOAD_EXEC_POLL = 0.05
 
+_MAYFLY_USER = "user"
+_MAYFLY_UID = 1000
+_MAYFLY_HOME = f"/home/{_MAYFLY_USER}"
 _MAYFLY_CONTAINER_PORT = 4096
-_MAYFLY_CONTAINER_HOME = "/home/user"
 _MAYFLY_NETWORK = "mayfly-net"
 
 _MANAGED_LABEL = "mayfly.managed"
 _MANAGED_LABEL_VALUE = "true"
+
+
+def parse_bytes(value: str) -> int:
+    text = value.strip().lower()
+    suffixes = {"k": 1024, "m": 1024**2, "g": 1024**3}
+    if text and text[-1] in suffixes:
+        return int(float(text[:-1]) * suffixes[text[-1]])
+    return int(text)
 
 
 class DockerRuntime:
@@ -43,7 +59,8 @@ class DockerRuntime:
 
             short_id = container.id[:12]
             logger.info(
-                f"Container started: {short_id} (mayfly-{session_id} @ {ip}, host:{port}) — waiting for ready"
+                f"Container started: {short_id} "
+                f"(mayfly-{session_id} @ {ip}, host:{port}) — waiting for ready"
             )
             await _wait_ready(ip, _MAYFLY_CONTAINER_PORT)
             logger.info(f"Container ready: {short_id} (mayfly-{session_id})")
@@ -68,7 +85,7 @@ class DockerRuntime:
                 raise RuntimeError("Container not found") from error
             raise
 
-        target_path = f"{_MAYFLY_CONTAINER_HOME}/{self._settings.mayfly_workspace_dir}/{filename}"
+        target_path = f"{_MAYFLY_HOME}/{self._settings.mayfly_workspace_dir}/{filename}"
         cmd = ["sh", "-c", f"umask 022 && cat > {quote(target_path)}"]
 
         try:
@@ -77,7 +94,7 @@ class DockerRuntime:
                 stdin=True,
                 stdout=False,
                 stderr=True,
-                user="user",
+                user=_MAYFLY_USER,
             )
             async with execute.start(detach=False) as stream:
                 async for chunk in chunks:
@@ -90,9 +107,7 @@ class DockerRuntime:
                     break
                 await sleep(_UPLOAD_EXEC_POLL)
             else:
-                raise RuntimeError(
-                    f"Upload exec did not finish within {_UPLOAD_EXEC_TIMEOUT}s"
-                )
+                raise RuntimeError(f"Upload exec did not finish within {_UPLOAD_EXEC_TIMEOUT}s")
         except DockerError as error:
             raise RuntimeError(f"Upload failed: {error}") from error
 
@@ -215,6 +230,7 @@ def _session_container_config(
         "MAYFLY_PASSWORD": password,
         "MAYFLY_WORKSPACE_DIR": settings.mayfly_workspace_dir,
         "OPENAI_BASE_URL": settings.openai_base_url,
+        "OPENAI_API_KEY": settings.openai_api_key,
         "OPENAI_MODEL": settings.openai_model,
         "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
         "OPENAI_OUTPUT_TOKENS": settings.openai_output_tokens,
@@ -225,7 +241,7 @@ def _session_container_config(
     return {
         "Image": settings.mayfly_image,
         "Hostname": f"mayfly-{session_id}",
-        "User": "1000:1000",
+        "User": f"{_MAYFLY_UID}:{_MAYFLY_UID}",
         "ExposedPorts": {f"{_MAYFLY_CONTAINER_PORT}/tcp": {}},
         "Env": [f"{key}={value}" for key, value in env.items()],
         "Labels": {_MANAGED_LABEL: _MANAGED_LABEL_VALUE},
@@ -239,8 +255,8 @@ def _session_container_config(
             "Memory": parse_bytes(settings.mayfly_memory),
             "NanoCpus": int(settings.mayfly_cpus * 1_000_000_000),
             "Tmpfs": {
-                "/home/user": f"size={settings.mayfly_tmpfs_size},uid=1000,exec",
-                "/tmp": "size=64m,uid=1000,exec",
+                _MAYFLY_HOME: f"size={settings.mayfly_tmpfs_size},uid={_MAYFLY_UID},exec",
+                "/tmp": f"size={settings.mayfly_tmp_size},uid={_MAYFLY_UID},exec",
             },
             "ReadonlyRootfs": True,
             "CapDrop": ["ALL"],
@@ -253,14 +269,6 @@ def _session_container_config(
             "EndpointsConfig": {_MAYFLY_NETWORK: {}},
         },
     }
-
-
-def parse_bytes(value: str) -> int:
-    text = value.strip().lower()
-    suffixes = {"k": 1024, "m": 1024**2, "g": 1024**3}
-    if text and text[-1] in suffixes:
-        return int(float(text[:-1]) * suffixes[text[-1]])
-    return int(text)
 
 
 def _is_port_binding_error(error: DockerError) -> bool:
@@ -286,7 +294,9 @@ async def _inspect_container(
 
     bindings = network_settings.get("Ports", {}).get(f"{container_port}/tcp") or []
     if not bindings:
-        raise RuntimeError(f"Container {container.id[:12]}: no host port mapped for {container_port}/tcp")
+        raise RuntimeError(
+            f"Container {container.id[:12]}: no host port mapped for {container_port}/tcp"
+        )
 
     return ip, int(bindings[0]["HostPort"])
 
