@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     mayfly_disconnect_timeout: float = Field(gt=0)
     #
     openai_base_url: str = Field(min_length=1)
+    openai_api_key: str = Field(min_length=1)
     openai_model: str = Field(min_length=1)
     openai_context_tokens: int = Field(gt=0)
     openai_output_tokens: int = Field(gt=0)
