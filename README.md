@@ -10,75 +10,96 @@
   </p>
 </div>
 
----
+Mayfly starts short-lived OpenChamber workspaces backed by OpenCode. Each browser session gets its own Docker sandbox, its own workspace, and its own OpenChamber UI password.
 
-One click opens a fresh OpenChamber web workspace backed by [OpenCode](https://opencode.ai), running inside its own short-lived Docker sandbox. No local editor setup, no persistent sandbox state; unwatched sessions are removed after the configured disconnect timeout.
+The sandboxes are intentionally disposable: no local editor setup, no persistent sandbox state, and automatic cleanup after disconnect.
 
-## 🌊 Flow
+## 🌊 How It Works
 
 ```mermaid
 flowchart LR
-  B([Browser]) -- HTTP --> A[FastAPI orchestrator]
-  A -- docker run --> M[[mayfly sandbox<br/>OpenCode + OpenChamber]]
-  B -. iframe<br/>:configured port range .-> M
+  B([Browser]) -- HTTP + WS --> A[FastAPI app]
+  A -- Docker API --> M[[Mayfly sandbox<br/>OpenCode + OpenChamber]]
+  B -. iframe + upload .-> M
 ```
 
-Sandboxes run unprivileged on a read-only rootfs with all caps dropped, `no-new-privileges`, memory/CPU/PID caps, and ephemeral tmpfs mounts for `$HOME` and `/tmp`.
+- The FastAPI app creates and tracks sessions.
+- Each session starts one sandbox container on an allocated host port.
+- The browser embeds OpenChamber directly in an iframe.
+- `$HOME` and `/tmp` inside the sandbox are tmpfs mounts, so every new session starts clean.
+- `docker/entrypoint.sh` generates OpenCode config, OpenChamber settings, the workspace directory, and a small `AGENTS.md`.
 
-## 🚀 Quick start
+## ✅ Requirements
 
-You need an OpenAI-compatible inference endpoint reachable from the sandbox (e.g. vLLM, llama.cpp, Ollama, or LM Studio). Point `OPENAI_BASE_URL` / `OPENAI_MODEL` at it in `.env`; for services running on the Docker host, use `host.docker.internal` as in the example.
+- Docker with access to `/var/run/docker.sock`
+- Python 3.13+ for local development
+- An OpenAI-compatible model endpoint reachable from the sandbox, for example Ollama, vLLM, llama.cpp, or LM Studio
+
+For model services running on the Docker host, use `host.docker.internal` in `.env`.
+
+## 🚀 Quick Start
 
 ```bash
 cp .env.example .env
-docker compose --profile build build   # build app + sandbox images
-docker compose up -d                   # start the FastAPI orchestrator
+docker compose --profile build build
+docker compose up -d
 ```
 
 Open <http://localhost:8123>.
 
-Each session gets a random OpenChamber UI password. The web view shows it in a modal; `POST /sessions` returns it as `password`.
+When changing files under `docker/`, rebuild the sandbox image before starting new sessions:
 
-## ⚙️ Tunables
+```bash
+docker compose --profile build build mayfly
+```
 
-Everything lives in [.env](.env.example). The ones worth knowing:
+## ⚙️ Configuration
 
-| | |
+All runtime configuration lives in [.env](.env.example).
+
+| Variable | Purpose |
 | --- | --- |
-| `PUBLIC_HOST` / `APP_PORT` / `APP_BIND_HOST` | generated URLs and FastAPI host binding |
-| `MAYFLY_IMAGE` | sandbox image used for per-session containers |
-| `MAYFLY_MAX_SESSIONS` | concurrency cap |
-| `MAYFLY_HOST_PORT_START` / `MAYFLY_HOST_PORT_END` | inclusive host port range for sandbox sessions |
-| `MAYFLY_BIND_HOST` | host address used for sandbox port bindings |
-| `MAYFLY_MEMORY` / `MAYFLY_CPUS` | per-sandbox resource limits |
-| `MAYFLY_TMPFS_SIZE` / `MAYFLY_TMP_SIZE` | ephemeral home and `/tmp` sizes |
-| `MAYFLY_WORKSPACE_DIR` | workspace directory created inside the sandbox home |
-| `MAYFLY_TRANSFER_LIMIT` | max size for navbar uploads |
-| `MAYFLY_CONNECT_TIMEOUT` | how long a session waits for the first browser connect |
-| `MAYFLY_DISCONNECT_TIMEOUT` | how long an unwatched session survives |
-| `TZ` | shared timezone for app + sandboxes |
-| `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` | LLM endpoint, API key, and model each sandbox talks to |
-| `OPENAI_CONTEXT_TOKENS` / `OPENAI_OUTPUT_TOKENS` | model token limits passed to OpenCode |
-| `OPENAI_TIMEOUT` / `OPENAI_CHUNK_TIMEOUT` | request and stream idle timeouts in milliseconds |
+| `PUBLIC_HOST`, `APP_PORT`, `APP_BIND_HOST` | external URL generation and FastAPI bind address |
+| `MAYFLY_IMAGE` | per-session sandbox image |
+| `MAYFLY_HOST_PORT_START`, `MAYFLY_HOST_PORT_END` | host port range for sandbox containers |
+| `MAYFLY_BIND_HOST` | bind address for sandbox ports |
+| `MAYFLY_MAX_SESSIONS` | max concurrent sessions |
+| `MAYFLY_MEMORY`, `MAYFLY_CPUS` | per-sandbox resource limits |
+| `MAYFLY_HOME_SIZE`, `MAYFLY_TMP_SIZE` | sandbox `$HOME` and `/tmp` tmpfs sizes |
+| `MAYFLY_WORKSPACE_DIR` | workspace directory inside the sandbox home |
+| `MAYFLY_UPLOAD_LIMIT` | max upload size into the workspace |
+| `MAYFLY_CONNECT_TIMEOUT`, `MAYFLY_DISCONNECT_TIMEOUT` | cleanup timing for unused sessions |
+| `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` | model endpoint passed to OpenCode |
+| `OPENAI_CONTEXT_TOKENS`, `OPENAI_OUTPUT_TOKENS` | model limits passed to OpenCode |
+| `OPENAI_TIMEOUT`, `OPENAI_CHUNK_TIMEOUT` | OpenCode provider request timeouts |
 
-Offline / Nexus builds: override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`,
-`NPM_REGISTRY`, and `NPM_STRICT_SSL` in `.env`.
+For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_REGISTRY`, and `NPM_STRICT_SSL`.
 
-## 🌐 Surface
+## 🌐 API Surface
 
-- **`GET /`** — browser entrypoint
-- **`POST /view`** — create a browser session and redirect to `/view/{token}`
-- **`GET /view/{token}`** — browser view for one session
-- **`POST /sessions`** — create a session via API, returns `url` and `password`
-- **`GET /sessions/status`** — active / available / limit counts
-- **`POST /sessions/{token}/upload`** — password-protected upload into the sandbox workspace
-- **`DELETE /sessions/{token}`** — stop a session
-- **`WS /sessions/{token}/lifecycle`** — websocket used by the browser view
-- **`/docs`** — OpenAPI
-- **`/mcp/`** — MCP endpoint, reachable from the host at `http://localhost:8123/mcp/`
+- `GET /` - browser entrypoint
+- `POST /view` - create a browser session and redirect to `/view/{token}`
+- `GET /view/{token}` - browser view for one session
+- `POST /sessions` - create a session via API, returns `url` and `password`
+- `GET /sessions/status` - active, available, and limit counts
+- `POST /sessions/{token}/upload` - password-protected file upload into the workspace
+- `DELETE /sessions/{token}` - stop a session
+- `WS /sessions/{token}/lifecycle` - browser lifecycle channel
+- `/docs` - OpenAPI docs
+- `/mcp/` - MCP endpoint
+
+Static UI assets are served under `/static/*`; `/favicon.ico` serves the Mayfly logo.
+
+## 🔒 Security Model
+
+Sandbox containers run as an unprivileged user with a read-only root filesystem, dropped Linux capabilities, `no-new-privileges`, PID/memory/CPU limits, and tmpfs mounts for writable runtime state.
+
+Mayfly is still alpha. If you bind the app or sandbox ports to a public interface, put it behind trusted network controls.
 
 ## 🧩 Layout
 
-- [`app/`](app/) — FastAPI orchestrator
-- [`docker/Dockerfile.mayfly`](docker/Dockerfile.mayfly) — per-session sandbox image (build-only profile)
-- [`docker/Dockerfile.app`](docker/Dockerfile.app) — orchestrator image
+- [`app/`](app/) - FastAPI app, routers, services, templates, and static UI assets
+- [`docker/Dockerfile.app`](docker/Dockerfile.app) - orchestrator image
+- [`docker/Dockerfile.mayfly`](docker/Dockerfile.mayfly) - per-session sandbox image
+- [`docker/entrypoint.sh`](docker/entrypoint.sh) - sandbox startup config for OpenCode, OpenChamber, and workspace instructions
+- [`docker-compose.yml`](docker-compose.yml) - app service, build profile, and shared Docker network
