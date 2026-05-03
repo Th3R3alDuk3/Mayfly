@@ -1,10 +1,4 @@
-from asyncio import (
-    CancelledError,
-    Lock,
-    create_task,
-    gather,
-    sleep,
-)
+from asyncio import Event, Lock, create_task, gather, timeout
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from logging import getLogger
@@ -18,7 +12,6 @@ from app.models.session import (
     SessionStatusResponse,
 )
 from app.services.docker import DockerRuntime
-
 
 logger = getLogger(__name__)
 
@@ -53,13 +46,7 @@ class SessionManager:
                 raise RuntimeError("Max mayfly limit reached")
             self._sessions[token] = entry
             if start_cleanup:
-                entry.cleanup_task = create_task(
-                    self._close_after_timeout(
-                        token,
-                        self._settings.mayfly_connect_timeout,
-                        "connect",
-                    )
-                )
+                self._arm_timeout(entry, token, self._settings.mayfly_connect_timeout, "connect")
 
         return entry.session
 
@@ -74,13 +61,9 @@ class SessionManager:
             entry = self._sessions.get(session.token)
             if entry is None or entry.session.state != SessionState.READY:
                 raise RuntimeError("Session was closed during start")
-            if entry.cleanup_task is None and not entry.client_connected:
-                entry.cleanup_task = create_task(
-                    self._close_after_timeout(
-                        session.token,
-                        self._settings.mayfly_connect_timeout,
-                        "connect",
-                    )
+            if entry.timeout_task is None and not entry.client_connected:
+                self._arm_timeout(
+                    entry, session.token, self._settings.mayfly_connect_timeout, "connect"
                 )
 
         return session
@@ -120,11 +103,12 @@ class SessionManager:
                 return ConnectResult.BUSY
 
             entry.client_connected = True
-            cleanup_task = entry.cleanup_task
-            entry.cleanup_task = None
+            cancel = entry.timeout_cancel
+            entry.timeout_cancel = None
+            entry.timeout_task = None
 
-        if cleanup_task:
-            cleanup_task.cancel()
+        if cancel is not None:
+            cancel.set()
         return ConnectResult.OK
 
     async def schedule_disconnect_close(self, token: str) -> None:
@@ -133,14 +117,10 @@ class SessionManager:
             if entry is None or entry.session.state == SessionState.CLOSING:
                 return
             entry.client_connected = False
-            if entry.cleanup_task is not None:
+            if entry.timeout_task is not None:
                 return
-            entry.cleanup_task = create_task(
-                self._close_after_timeout(
-                    token,
-                    self._settings.mayfly_disconnect_timeout,
-                    "disconnect",
-                )
+            self._arm_timeout(
+                entry, token, self._settings.mayfly_disconnect_timeout, "disconnect"
             )
 
     async def upload(self, token: str, filename: str, chunks: AsyncIterator[bytes]) -> None:
@@ -184,6 +164,19 @@ class SessionManager:
     async def cleanup_stale_containers(self) -> None:
         await self._runtime.remove_managed_containers()
 
+    def _arm_timeout(
+        self,
+        entry: SessionEntry,
+        token: str,
+        delay: float,
+        timeout_name: str,
+    ) -> None:
+        cancel = Event()
+        entry.timeout_cancel = cancel
+        entry.timeout_task = create_task(
+            self._close_after_timeout(token, delay, timeout_name, cancel)
+        )
+
     async def _start_session_container(
         self,
         token: str,
@@ -194,17 +187,21 @@ class SessionManager:
             container = await self._runtime.start_session_container(token, entry.session.password)
         except Exception as error:
             logger.exception(f"Failed to start session {token}")
+            cancel: Event | None = None
             async with self._lock:
                 current = self._sessions.get(token)
-                if current is entry:
+                if current is not None and current is entry:
                     current.session.state = SessionState.ERROR
                     current.session.error = str(error)
                     current.start_task = None
                     current.ready_event.set()
                     if remove_on_error:
-                        if current.cleanup_task is not None:
-                            current.cleanup_task.cancel()
+                        cancel = current.timeout_cancel
+                        current.timeout_cancel = None
+                        current.timeout_task = None
                         self._sessions.pop(token, None)
+            if cancel is not None:
+                cancel.set()
             raise
 
         stop_container_id: str | None = None
@@ -225,17 +222,26 @@ class SessionManager:
         if stop_container_id is not None:
             await self._runtime.stop_container(stop_container_id)
 
-    async def _close_after_timeout(self, token: str, delay: float, timeout_name: str) -> None:
+    async def _close_after_timeout(
+        self,
+        token: str,
+        delay: float,
+        timeout_name: str,
+        cancel: Event,
+    ) -> None:
         try:
-            await sleep(delay)
-        except CancelledError:
+            async with timeout(delay):
+                await cancel.wait()
             return
+        except TimeoutError:
+            pass
 
         async with self._lock:
             entry = self._sessions.get(token)
             if entry is None:
                 return
-            entry.cleanup_task = None
+            entry.timeout_task = None
+            entry.timeout_cancel = None
             if entry.client_connected:
                 return
 
@@ -243,9 +249,11 @@ class SessionManager:
         await self.close(token)
 
     async def _close_session(self, token: str, entry: SessionEntry) -> None:
-        if entry.cleanup_task:
-            entry.cleanup_task.cancel()
-        entry.cleanup_task = None
+        cancel = entry.timeout_cancel
+        entry.timeout_cancel = None
+        entry.timeout_task = None
+        if cancel is not None:
+            cancel.set()
 
         cleanup_succeeded = False
         try:

@@ -1,11 +1,11 @@
 (() => {
   const autostartForm = document.querySelector('[data-autostart-form]');
-  if (autostartForm instanceof HTMLFormElement) {
+  if (autostartForm) {
     autostartForm.submit();
   }
 
   const view = document.querySelector('[data-session-view]');
-  if (!(view instanceof HTMLElement)) {
+  if (!view) {
     return;
   }
 
@@ -15,23 +15,13 @@
   const message = document.getElementById('session-message');
   const spinner = document.getElementById('session-spinner');
   const statusValue = document.getElementById('session-status-value');
-  const passwordValues = Array.from(document.querySelectorAll('[data-session-password-value]'));
+  const passwordValues = document.querySelectorAll('[data-session-password-value]');
   const passwordModal = document.querySelector('[data-session-password-modal]');
   const passwordCopyButton = document.querySelector('[data-session-password-copy]');
   const passwordCopyText = document.querySelector('[data-session-password-copy-text]');
   const passwordDismissButton = document.querySelector('[data-session-password-dismiss]');
   const uploadInput = document.querySelector('[data-upload-input]');
   const uploadText = document.querySelector('[data-upload-text]');
-  if (
-    !token ||
-    !(frame instanceof HTMLIFrameElement) ||
-    !(loading instanceof HTMLElement) ||
-    !(message instanceof HTMLElement) ||
-    !(spinner instanceof HTMLElement) ||
-    !(statusValue instanceof HTMLElement)
-  ) {
-    return;
-  }
 
   let statusInterval;
   let terminalMessageShown = false;
@@ -73,20 +63,20 @@
     frame.src = url;
     loading.classList.add('hidden');
     frame.classList.remove('hidden');
-    if (uploadInput instanceof HTMLInputElement) {
+    if (uploadInput) {
       uploadInput.disabled = false;
     }
   }
 
   async function handleUpload(event) {
     const input = event.target;
-    if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+    if (!input.files || input.files.length === 0) {
       return;
     }
     const file = input.files[0];
-    const original = uploadText ? uploadText.textContent : '';
+    const original = uploadText.textContent;
     input.disabled = true;
-    if (uploadText) uploadText.textContent = 'Uploading...';
+    uploadText.textContent = 'Uploading...';
     try {
       const body = new FormData();
       body.append('file', file, file.name);
@@ -99,26 +89,22 @@
         let detail = `HTTP ${response.status}`;
         try {
           const payload = await response.json();
-          if (payload && typeof payload.detail === 'string') detail = payload.detail;
+          if (typeof payload?.detail === 'string') detail = payload.detail;
         } catch {}
         throw new Error(detail);
       }
-      if (uploadText) uploadText.textContent = 'Uploaded';
-      window.setTimeout(() => {
-        if (uploadText) uploadText.textContent = original || 'Upload';
-      }, 1500);
+      uploadText.textContent = 'Uploaded';
+      window.setTimeout(() => { uploadText.textContent = original; }, 1500);
     } catch {
-      if (uploadText) uploadText.textContent = 'Failed';
-      window.setTimeout(() => {
-        if (uploadText) uploadText.textContent = original || 'Upload';
-      }, 2000);
+      uploadText.textContent = 'Failed';
+      window.setTimeout(() => { uploadText.textContent = original; }, 2000);
     } finally {
       input.value = '';
       input.disabled = false;
     }
   }
 
-  if (uploadInput instanceof HTMLInputElement) {
+  if (uploadInput) {
     uploadInput.addEventListener('change', handleUpload);
   }
 
@@ -127,19 +113,17 @@
     for (const element of passwordValues) {
       element.textContent = value;
     }
-    if (!passwordModalShown && passwordModal instanceof HTMLElement) {
+    if (!passwordModalShown && passwordModal) {
       passwordModalShown = true;
       passwordModal.hidden = false;
       passwordModal.classList.remove('hidden');
       passwordModal.classList.add('flex');
-      if (passwordDismissButton instanceof HTMLElement) {
-        passwordDismissButton.focus();
-      }
+      passwordDismissButton?.focus();
     }
   }
 
   function dismissPasswordModal() {
-    if (!(passwordModal instanceof HTMLElement)) return;
+    if (!passwordModal) return;
     passwordModal.hidden = true;
     passwordModal.classList.add('hidden');
     passwordModal.classList.remove('flex');
@@ -147,31 +131,23 @@
 
   async function copyPassword() {
     if (!password) return;
-    const original = passwordCopyText ? passwordCopyText.textContent : '';
+    const original = passwordCopyText.textContent;
     try {
       await navigator.clipboard.writeText(password);
-      if (passwordCopyText) passwordCopyText.textContent = 'Copied';
+      passwordCopyText.textContent = 'Copied';
     } catch {
-      if (passwordCopyText) passwordCopyText.textContent = 'Failed';
+      passwordCopyText.textContent = 'Failed';
     }
-    window.setTimeout(() => {
-      if (passwordCopyText) passwordCopyText.textContent = original || 'Copy';
-    }, 1500);
+    window.setTimeout(() => { passwordCopyText.textContent = original; }, 1500);
   }
 
-  if (passwordCopyButton instanceof HTMLElement) {
-    passwordCopyButton.addEventListener('click', copyPassword);
-  }
-  if (passwordDismissButton instanceof HTMLElement) {
-    passwordDismissButton.addEventListener('click', dismissPasswordModal);
-  }
-  if (passwordModal instanceof HTMLElement) {
-    passwordModal.addEventListener('click', (event) => {
-      if (event.target === passwordModal) dismissPasswordModal();
-    });
-  }
+  passwordCopyButton?.addEventListener('click', copyPassword);
+  passwordDismissButton?.addEventListener('click', dismissPasswordModal);
+  passwordModal?.addEventListener('click', (event) => {
+    if (event.target === passwordModal) dismissPasswordModal();
+  });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && passwordModal instanceof HTMLElement && !passwordModal.hidden) {
+    if (event.key === 'Escape' && passwordModal && !passwordModal.hidden) {
       dismissPasswordModal();
     }
   });
@@ -229,7 +205,7 @@
 
   window.addEventListener('pagehide', () => {
     window.clearInterval(statusInterval);
-    if (socket instanceof WebSocket && socket.readyState < WebSocket.CLOSING) {
+    if (socket && socket.readyState < WebSocket.CLOSING) {
       socket.close(1000, 'page unloaded');
     }
   });

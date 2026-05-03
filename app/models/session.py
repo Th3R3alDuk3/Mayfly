@@ -1,6 +1,6 @@
 from asyncio import Event, Task
 from enum import StrEnum
-from secrets import token_hex, token_urlsafe
+from secrets import token_hex
 from time import time
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,21 +15,37 @@ class SessionState(StrEnum):
     CLOSING = "closing"
 
 
-def _session_token() -> str:
+class ConnectResult(StrEnum):
+    OK = "ok"
+    UNKNOWN = "unknown"
+    BUSY = "busy"
+
+
+def _magic() -> str:
     return token_hex(24)
-
-
-def _ui_password() -> str:
-    return token_urlsafe(18)
 
 
 class Session(BaseModel):
     created_at: float = Field(default_factory=time)
-    token: str = Field(default_factory=_session_token)
-    password: str = Field(default_factory=_ui_password, repr=False)
+    token: str = Field(default_factory=_magic)
+    password: str = Field(default_factory=_magic, repr=False)
     state: SessionState = SessionState.STARTING
     container: Container | None = None
     error: str | None = None
+
+
+class SessionEntry(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    session: Session
+    ready_event: Event = Field(default_factory=Event)
+    close_event: Event = Field(default_factory=Event)
+    client_connected: bool = False
+    start_task: Task[None] | None = None
+    close_task: Task[None] | None = None
+    timeout_task: Task[None] | None = None
+    timeout_cancel: Event | None = None
+    cleanup_error: Exception | None = None
 
 
 class SessionCreateResponse(BaseModel):
@@ -48,22 +64,3 @@ class SessionLifecycleEvent(BaseModel):
     error: str | None = None
     url: str | None = None
     password: str | None = None
-
-
-class ConnectResult(StrEnum):
-    OK = "ok"
-    UNKNOWN = "unknown"
-    BUSY = "busy"
-
-
-class SessionEntry(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    session: Session
-    ready_event: Event = Field(default_factory=Event)
-    close_event: Event = Field(default_factory=Event)
-    client_connected: bool = False
-    start_task: Task[None] | None = None
-    close_task: Task[None] | None = None
-    cleanup_task: Task[None] | None = None
-    cleanup_error: Exception | None = None

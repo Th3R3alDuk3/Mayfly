@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
-from pydantic import Field
+from pydantic import ByteSize, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,12 +23,12 @@ class Settings(BaseSettings):
     mayfly_host_port_end: int = Field(default=40100, ge=1, le=65535)
     mayfly_bind_host: str = Field(min_length=1)
     mayfly_max_sessions: int = Field(gt=0)
-    mayfly_memory: str = Field(min_length=1)
+    mayfly_memory: ByteSize
     mayfly_cpus: float = Field(gt=0)
-    mayfly_tmp_size: str = Field(min_length=1)
-    mayfly_tmpfs_size: str = Field(min_length=1)
+    mayfly_home_size: ByteSize
+    mayfly_tmp_size: ByteSize
     mayfly_workspace_dir: str = Field(min_length=1)
-    mayfly_transfer_limit: str = Field(min_length=1)
+    mayfly_upload_limit: ByteSize
     mayfly_connect_timeout: float = Field(gt=0)
     mayfly_disconnect_timeout: float = Field(gt=0)
     #

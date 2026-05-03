@@ -103,6 +103,27 @@ if [ ! -f "${OPENCHAMBER_SETTINGS}" ]; then
 EOF
 fi
 
+###
+
+WORKSPACE_AGENTS="${OPENCHAMBER_WORKSPACE_DIR}/AGENTS.md"
+if [ ! -f "${WORKSPACE_AGENTS}" ]; then
+  cat > "${WORKSPACE_AGENTS}" <<'EOF'
+# AGENTS.md - Mayfly Workspace
+
+The agent works offline.
+
+- Answer precisely, briefly, and concisely.
+- Ask when uncertain before making assumptions.
+- Use local workspace files as the source of truth.
+- Work only inside the workspace unless explicitly asked otherwise.
+- Preserve existing user files and changes.
+- Prefer `rg` / `rg --files` for searching.
+- Do not use network access.
+EOF
+fi
+
+###
+
 cd "${OPENCHAMBER_WORKSPACE_DIR}"
 
 exec openchamber \

@@ -1,10 +1,9 @@
+from asyncio import TaskGroup
 from collections.abc import AsyncIterator
 from hmac import compare_digest
 from logging import getLogger
 from pathlib import PurePosixPath
-from urllib.parse import urlsplit
 
-from anyio import create_task_group
 from fastapi import (
     APIRouter,
     File,
@@ -25,12 +24,14 @@ from app.models.session import (
     SessionState,
     SessionStatusResponse,
 )
-from app.services.docker import parse_bytes
 from app.services.session import SessionManager
-
 
 logger = getLogger(__name__)
 router = APIRouter()
+
+
+class _SessionClosedByManager(Exception):
+    pass
 
 
 def _lifecycle_event(
@@ -52,17 +53,6 @@ def _lifecycle_event(
         url=url,
         password=password,
     )
-
-
-def _is_same_origin(websocket: WebSocket) -> bool:
-    origin = websocket.headers.get("origin")
-    host = websocket.headers.get("host")
-    if not origin or not host:
-        return False
-    parsed = urlsplit(origin)
-    if parsed.scheme not in ("http", "https"):
-        return False
-    return parsed.netloc == host
 
 
 @router.get(
@@ -128,7 +118,8 @@ async def upload_to_session(
     if not name or name in {".", ".."} or "\x00" in name:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    limit = parse_bytes(settings.mayfly_transfer_limit)
+    limit = int(settings.mayfly_upload_limit)
+    limit_human = settings.mayfly_upload_limit.human_readable()
 
     async def chunks() -> AsyncIterator[bytes]:
         sent = 0
@@ -140,7 +131,7 @@ async def upload_to_session(
             if sent > limit:
                 raise HTTPException(
                     status_code=413,
-                    detail=f"File exceeds {settings.mayfly_transfer_limit} limit",
+                    detail=f"File exceeds {limit_human} limit",
                 )
             yield chunk
 
@@ -180,10 +171,6 @@ async def session_lifecycle(
 ) -> None:
     manager: SessionManager = websocket.app.state.manager
     host = (websocket.url.hostname or "").strip() or settings.public_host
-
-    if not _is_same_origin(websocket):
-        await websocket.close(code=4003, reason="forbidden origin")
-        return
 
     await websocket.accept()
 
@@ -230,16 +217,21 @@ async def session_lifecycle(
             return
 
         try:
-            async with create_task_group() as tg:
+            async with TaskGroup() as tg:
                 async def watch_close() -> None:
                     nonlocal closed_by_manager
                     await manager.wait_closing(token)
                     closed_by_manager = True
-                    tg.cancel_scope.cancel()
+                    raise _SessionClosedByManager
 
-                tg.start_soon(watch_close)
-                while True:
-                    await websocket.receive_text()
+                async def receive_messages() -> None:
+                    while True:
+                        await websocket.receive_text()
+
+                tg.create_task(watch_close())
+                tg.create_task(receive_messages())
+        except* _SessionClosedByManager:
+            pass
         except* WebSocketDisconnect:
             logger.info(f"Lifecycle WS disconnected: {token}")
 

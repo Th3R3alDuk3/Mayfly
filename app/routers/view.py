@@ -5,7 +5,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.services.session import SessionManager
 
-
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
