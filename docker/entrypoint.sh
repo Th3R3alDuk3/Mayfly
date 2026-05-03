@@ -56,10 +56,19 @@ cat > "${OPENCODE_DATA_DIR}/opencode.json" <<EOF
   },
   "model": "Mayfly/${OPENAI_MODEL}",
   "permission": {
+    "read": "allow",
     "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
     "bash": "allow",
+    "task": "allow",
+    "skill": "allow",
+    "lsp": "allow",
+    "question": "allow",
     "webfetch": "deny",
-    "websearch": "deny"
+    "websearch": "deny",
+    "external_directory": "deny",
+    "doom_loop": "ask"
   }
 }
 EOF
@@ -87,11 +96,14 @@ if [ ! -f "${OPENCHAMBER_SETTINGS}" ]; then
     }
   ],
   "activeProjectId": "workspace",
+  "approvedDirectories": ["${OPENCHAMBER_WORKSPACE_DIR}"],
   "directoryShowHidden": true,
   "reportUsage": false
 }
 EOF
 fi
+
+cd "${OPENCHAMBER_WORKSPACE_DIR}"
 
 exec openchamber \
   --foreground \
