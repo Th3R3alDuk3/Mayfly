@@ -31,6 +31,7 @@ cat > "${OPENCODE_DATA_DIR}/opencode.json" <<EOF
       },
       "models": {
         "${OPENAI_MODEL}": {
+          "tool_call": true,
           "limit": {
             "context": ${OPENAI_CONTEXT_TOKENS},
             "output": ${OPENAI_OUTPUT_TOKENS}
@@ -51,7 +52,26 @@ cat > "${OPENCODE_DATA_DIR}/opencode.json" <<EOF
       }
     }
   },
-  "model": "Mayfly/${OPENAI_MODEL}"
+  "model": "Mayfly/${OPENAI_MODEL}",
+  "permission": {
+    "read": "allow",
+    "write": "ask",
+    "edit": "ask",
+    "patch": "allow",
+    "bash": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "skill": "allow",
+    "todoread": "allow",
+    "todowrite": "allow",
+    "question": "allow",
+    "doom_loop": "allow",
+    "external_directory": "allow"
+  }
 }
 EOF
 

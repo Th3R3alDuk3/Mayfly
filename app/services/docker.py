@@ -68,8 +68,8 @@ class DockerRuntime:
                 raise RuntimeError("Container not found") from error
             raise
 
-        target = f"{_expand_container_home(self._settings.mayfly_workspace_dir)}/{filename}"
-        cmd = ["sh", "-c", f"umask 022 && cat > {quote(target)}"]
+        target_path = f"{_MAYFLY_CONTAINER_HOME}/{self._settings.mayfly_workspace_dir}/{filename}"
+        cmd = ["sh", "-c", f"umask 022 && cat > {quote(target_path)}"]
 
         try:
             execute = await container.exec(
@@ -253,16 +253,6 @@ def _session_container_config(
             "EndpointsConfig": {_MAYFLY_NETWORK: {}},
         },
     }
-
-
-def _expand_container_home(path: str) -> str:
-    expanded = path.replace("${HOME}", _MAYFLY_CONTAINER_HOME).replace(
-        "$HOME",
-        _MAYFLY_CONTAINER_HOME,
-    )
-    if not expanded.startswith("/"):
-        expanded = f"{_MAYFLY_CONTAINER_HOME}/{expanded.lstrip('/')}"
-    return expanded
 
 
 def parse_bytes(value: str) -> int:
