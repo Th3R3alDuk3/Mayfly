@@ -9,6 +9,7 @@ set -e
 : "${OPENAI_CHUNK_TIMEOUT:?}"
 : "${MAYFLY_PORT:?}"
 : "${MAYFLY_PASSWORD:?}"
+: "${MAYFLY_WORKSPACE_DIR:?}"
 
 ###
 
@@ -60,7 +61,7 @@ OPENCHAMBER_DATA_DIR="${OPENCHAMBER_DATA_DIR:-${HOME}/.config/openchamber}"
 export OPENCHAMBER_DATA_DIR
 mkdir -p "${OPENCHAMBER_DATA_DIR}"
 
-OPENCHAMBER_WORKSPACE_DIR="${HOME}/WORKSPACE"
+OPENCHAMBER_WORKSPACE_DIR="${HOME}/${MAYFLY_WORKSPACE_DIR}"
 mkdir -p "${OPENCHAMBER_WORKSPACE_DIR}"
 
 OPENCHAMBER_SETTINGS="${OPENCHAMBER_DATA_DIR}/settings.json"
@@ -68,12 +69,20 @@ if [ ! -f "${OPENCHAMBER_SETTINGS}" ]; then
   cat > "${OPENCHAMBER_SETTINGS}" <<EOF
 {
   "lastDirectory": "${OPENCHAMBER_WORKSPACE_DIR}",
-  "homeDirectory": "${OPENCHAMBER_WORKSPACE_DIR}"
+  "homeDirectory": "${OPENCHAMBER_WORKSPACE_DIR}",
+  "projects": [
+    {
+      "id": "workspace",
+      "path": "${OPENCHAMBER_WORKSPACE_DIR}",
+      "label": "Workspace"
+    }
+  ],
+  "activeProjectId": "workspace",
+  "directoryShowHidden": true,
+  "reportUsage": false
 }
 EOF
 fi
-
-cd "${OPENCHAMBER_WORKSPACE_DIR}"
 
 exec openchamber \
   --foreground \
