@@ -10,10 +10,12 @@ set -e
 : "${MAYFLY_PORT:?}"
 : "${MAYFLY_PASSWORD:?}"
 
-CONFIG_DIR="${HOME}/.config/opencode"
-mkdir -p "${CONFIG_DIR}"
+###
 
-cat > "${CONFIG_DIR}/opencode.json" <<EOF
+OPENCODE_DATA_DIR="${HOME}/.config/opencode"
+mkdir -p "${OPENCODE_DATA_DIR}"
+
+cat > "${OPENCODE_DATA_DIR}/opencode.json" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "enabled_providers": ["Mayfly"],
@@ -52,10 +54,26 @@ cat > "${CONFIG_DIR}/opencode.json" <<EOF
 }
 EOF
 
-WORKSPACE_DIR="${HOME}/WORKSPACE"
-mkdir -p "${WORKSPACE_DIR}"
+###
 
-cd "${HOME}"
+OPENCHAMBER_DATA_DIR="${OPENCHAMBER_DATA_DIR:-${HOME}/.config/openchamber}"
+export OPENCHAMBER_DATA_DIR
+mkdir -p "${OPENCHAMBER_DATA_DIR}"
+
+OPENCHAMBER_WORKSPACE_DIR="${HOME}/WORKSPACE"
+mkdir -p "${OPENCHAMBER_WORKSPACE_DIR}"
+
+OPENCHAMBER_SETTINGS="${OPENCHAMBER_DATA_DIR}/settings.json"
+if [ ! -f "${OPENCHAMBER_SETTINGS}" ]; then
+  cat > "${OPENCHAMBER_SETTINGS}" <<EOF
+{
+  "lastDirectory": "${OPENCHAMBER_WORKSPACE_DIR}",
+  "homeDirectory": "${OPENCHAMBER_WORKSPACE_DIR}"
+}
+EOF
+fi
+
+cd "${OPENCHAMBER_WORKSPACE_DIR}"
 
 exec openchamber \
   --foreground \
