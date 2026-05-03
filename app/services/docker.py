@@ -1,5 +1,8 @@
+from asyncio import sleep
 from contextlib import suppress
 from logging import getLogger
+from shlex import quote
+from typing import AsyncIterator
 
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
@@ -16,8 +19,11 @@ logger = getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL = 3
+_UPLOAD_EXEC_TIMEOUT = 10
+_UPLOAD_EXEC_POLL = 0.05
 
 _MAYFLY_CONTAINER_PORT = 4096
+_MAYFLY_CONTAINER_HOME = "/home/user"
 _MAYFLY_NETWORK = "mayfly-net"
 
 _MANAGED_LABEL = "mayfly.managed"
@@ -48,6 +54,50 @@ class DockerRuntime:
                     await container.stop(t=3)
                     await container.delete()
             raise
+
+    async def upload_to_workspace(
+        self,
+        container_id: str,
+        filename: str,
+        chunks: AsyncIterator[bytes],
+    ) -> None:
+        try:
+            container = await self._client.containers.get(container_id)
+        except DockerError as error:
+            if error.status == 404:
+                raise RuntimeError("Container not found") from error
+            raise
+
+        target = f"{_expand_container_home(self._settings.mayfly_workspace_dir)}/{filename}"
+        cmd = ["sh", "-c", f"umask 022 && cat > {quote(target)}"]
+
+        try:
+            execute = await container.exec(
+                cmd=cmd,
+                stdin=True,
+                stdout=False,
+                stderr=True,
+                user="user",
+            )
+            async with execute.start(detach=False) as stream:
+                async for chunk in chunks:
+                    await stream.write_in(chunk)
+
+            exit_code = None
+            for _ in range(round(_UPLOAD_EXEC_TIMEOUT / _UPLOAD_EXEC_POLL)):
+                exit_code = (await execute.inspect()).get("ExitCode")
+                if exit_code is not None:
+                    break
+                await sleep(_UPLOAD_EXEC_POLL)
+            else:
+                raise RuntimeError(
+                    f"Upload exec did not finish within {_UPLOAD_EXEC_TIMEOUT}s"
+                )
+        except DockerError as error:
+            raise RuntimeError(f"Upload failed: {error}") from error
+
+        if exit_code != 0:
+            raise RuntimeError(f"Upload exec failed (exit {exit_code})")
 
     async def stop_container(self, container_id: str) -> None:
         try:
@@ -163,6 +213,7 @@ def _session_container_config(
     env = {
         "MAYFLY_PORT": _MAYFLY_CONTAINER_PORT,
         "MAYFLY_PASSWORD": password,
+        "MAYFLY_WORKSPACE_DIR": settings.mayfly_workspace_dir,
         "OPENAI_BASE_URL": settings.openai_base_url,
         "OPENAI_MODEL": settings.openai_model,
         "OPENAI_CONTEXT_TOKENS": settings.openai_context_tokens,
@@ -185,7 +236,7 @@ def _session_container_config(
                     {"HostIp": settings.mayfly_bind_host, "HostPort": str(host_port)}
                 ],
             },
-            "Memory": _parse_bytes(settings.mayfly_memory),
+            "Memory": parse_bytes(settings.mayfly_memory),
             "NanoCpus": int(settings.mayfly_cpus * 1_000_000_000),
             "Tmpfs": {
                 "/home/user": f"size={settings.mayfly_tmpfs_size},uid=1000,exec",
@@ -204,7 +255,17 @@ def _session_container_config(
     }
 
 
-def _parse_bytes(value: str) -> int:
+def _expand_container_home(path: str) -> str:
+    expanded = path.replace("${HOME}", _MAYFLY_CONTAINER_HOME).replace(
+        "$HOME",
+        _MAYFLY_CONTAINER_HOME,
+    )
+    if not expanded.startswith("/"):
+        expanded = f"{_MAYFLY_CONTAINER_HOME}/{expanded.lstrip('/')}"
+    return expanded
+
+
+def parse_bytes(value: str) -> int:
     text = value.strip().lower()
     suffixes = {"k": 1024, "m": 1024**2, "g": 1024**3}
     if text and text[-1] in suffixes:

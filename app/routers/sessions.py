@@ -1,8 +1,11 @@
 from logging import getLogger
+from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
 from anyio import create_task_group
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from hmac import compare_digest
+
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 
 from app.config import SettingsDep
 from app.models.session import (
@@ -13,6 +16,7 @@ from app.models.session import (
     SessionState,
     SessionStatusResponse,
 )
+from app.services.docker import parse_bytes
 from app.services.session import SessionManager
 
 
@@ -98,6 +102,56 @@ async def create_session(
         url=str(request.url_for("view_session", token=session.token)),
         password=session.password,
     )
+
+
+@router.post(
+    path="/sessions/{token}/upload",
+    status_code=204,
+    operation_id="upload_to_mayfly_session",
+    tags=["sessions"],
+    description="Uploads a single file into the sandbox workspace directory.",
+)
+async def upload_to_session(
+    token: str,
+    request: Request,
+    settings: SettingsDep,
+    file: UploadFile = File(...),
+    x_mayfly_password: str = Header(default=""),
+) -> None:
+
+    manager: SessionManager = request.app.state.manager
+
+    session = manager.get(token)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not x_mayfly_password or not compare_digest(x_mayfly_password, session.password):
+        raise HTTPException(status_code=401, detail="Invalid session password")
+
+    raw_name = file.filename or ""
+    name = PurePosixPath(raw_name.replace("\\", "/")).name
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    limit = parse_bytes(settings.mayfly_transfer_limit)
+
+    async def chunks():
+        sent = 0
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                return
+            sent += len(chunk)
+            if sent > limit:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File exceeds {settings.mayfly_transfer_limit} limit",
+                )
+            yield chunk
+
+    try:
+        await manager.upload(token, name, chunks())
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.delete(

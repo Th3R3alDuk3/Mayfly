@@ -175,6 +175,14 @@ class SessionManager:
     async def cleanup_stale_containers(self) -> None:
         await self._runtime.remove_managed_containers()
 
+    async def upload(self, token: str, filename: str, chunks) -> None:
+        entry = self._sessions.get(token)
+        if entry is None:
+            raise RuntimeError("Session not found")
+        if entry.session.state != SessionState.READY or entry.session.container is None:
+            raise RuntimeError("Session not ready")
+        await self._runtime.upload_to_workspace(entry.session.container.id, filename, chunks)
+
     async def _start_session_container(
         self,
         token: str,

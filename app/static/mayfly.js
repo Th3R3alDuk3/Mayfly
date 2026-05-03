@@ -17,6 +17,8 @@
   const statusValue = document.getElementById('session-status-value');
   const passwordPanels = Array.from(document.querySelectorAll('[data-session-password-panel]'));
   const passwordValues = Array.from(document.querySelectorAll('[data-session-password-value]'));
+  const uploadInput = document.querySelector('[data-upload-input]');
+  const uploadText = document.querySelector('[data-upload-text]');
   if (
     !token ||
     !(frame instanceof HTMLIFrameElement) ||
@@ -67,6 +69,54 @@
     frame.src = url;
     loading.classList.add('hidden');
     frame.classList.remove('hidden');
+    if (uploadInput instanceof HTMLInputElement) {
+      uploadInput.disabled = false;
+    }
+  }
+
+  async function handleUpload(event) {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+      return;
+    }
+    const file = input.files[0];
+    const original = uploadText ? uploadText.textContent : '';
+    input.disabled = true;
+    if (uploadText) uploadText.textContent = 'Uploading...';
+    try {
+      const body = new FormData();
+      body.append('file', file, file.name);
+      const response = await fetch(`/sessions/${encodeURIComponent(token)}/upload`, {
+        method: 'POST',
+        headers: { 'X-Mayfly-Password': password },
+        body,
+      });
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const payload = await response.json();
+          if (payload && typeof payload.detail === 'string') detail = payload.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+      if (uploadText) uploadText.textContent = 'Uploaded';
+      window.setTimeout(() => {
+        if (uploadText) uploadText.textContent = original || 'Upload';
+      }, 1500);
+    } catch (error) {
+      if (uploadText) uploadText.textContent = 'Failed';
+      window.setTimeout(() => {
+        if (uploadText) uploadText.textContent = original || 'Upload';
+      }, 2000);
+      console.error('Upload failed:', error);
+    } finally {
+      input.value = '';
+      input.disabled = false;
+    }
+  }
+
+  if (uploadInput instanceof HTMLInputElement) {
+    uploadInput.addEventListener('change', handleUpload);
   }
 
   function setPassword(value) {

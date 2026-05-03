@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     mayfly_memory: str = Field(min_length=1)
     mayfly_cpus: float = Field(gt=0)
     mayfly_tmpfs_size: str = Field(min_length=1)
+    mayfly_workspace_dir: str = Field(min_length=1)
+    mayfly_transfer_limit: str = Field(min_length=1)
     mayfly_connect_timeout: float = Field(gt=0)
     mayfly_disconnect_timeout: float = Field(gt=0)
     #
