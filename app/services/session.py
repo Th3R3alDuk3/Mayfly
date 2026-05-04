@@ -16,6 +16,8 @@ from app.services.sandbox import SandboxRuntime
 
 logger = getLogger(__name__)
 
+_TimeoutKind = Literal["connect", "disconnect"]
+
 
 class SessionManager:
     def __init__(self, settings: Settings) -> None:
@@ -29,9 +31,7 @@ class SessionManager:
 
     def get(self, token: str) -> Session | None:
         entry = self._sessions.get(token)
-        if entry is None:
-            return None
-        return entry.session
+        return entry.session if entry is not None else None
 
     def status(self) -> SessionStatusResponse:
         active = len(self._sessions)
@@ -50,7 +50,7 @@ class SessionManager:
                 raise RuntimeError("Max mayfly limit reached")
             self._sessions[token] = entry
             if arm_connect_timeout:
-                self._arm_timeout(entry, token, self._settings.mayfly_connect_timeout, "connect")
+                self._arm_timeout(entry, token, "connect")
 
         return entry.session
 
@@ -66,9 +66,7 @@ class SessionManager:
             if entry is None or entry.session.state != SessionState.READY:
                 raise RuntimeError("Session was closed during start")
             if entry.timeout_task is None and not entry.client_connected:
-                self._arm_timeout(
-                    entry, session.token, self._settings.mayfly_connect_timeout, "connect"
-                )
+                self._arm_timeout(entry, session.token, "connect")
 
         return session
 
@@ -105,11 +103,8 @@ class SessionManager:
                 return ConnectResult.UNKNOWN
             if entry.client_connected:
                 return ConnectResult.BUSY
-
             entry.client_connected = True
-            cancel = entry.timeout_cancel
-            entry.timeout_cancel = None
-            entry.timeout_task = None
+            cancel = _detach_timeout(entry)
 
         if cancel is not None:
             cancel.set()
@@ -123,9 +118,7 @@ class SessionManager:
             entry.client_connected = False
             if entry.timeout_task is not None:
                 return
-            self._arm_timeout(
-                entry, token, self._settings.mayfly_disconnect_timeout, "disconnect"
-            )
+            self._arm_timeout(entry, token, "disconnect")
 
     async def upload(self, token: str, filename: str, chunks: AsyncIterator[bytes]) -> None:
         entry = self._sessions.get(token)
@@ -140,7 +133,6 @@ class SessionManager:
             entry = self._sessions.get(token)
             if entry is None:
                 return
-
             if entry.close_task is None:
                 entry.cleanup_error = None
                 entry.client_connected = False
@@ -148,7 +140,6 @@ class SessionManager:
                 entry.ready_event.set()
                 entry.close_event.set()
                 entry.close_task = create_task(self._close_session(token, entry))
-
             close_task = entry.close_task
 
         await close_task
@@ -165,17 +156,16 @@ class SessionManager:
         finally:
             await self._runtime.close()
 
-    def _arm_timeout(
-        self,
-        entry: SessionEntry,
-        token: str,
-        delay: float,
-        timeout_name: Literal["connect", "disconnect"],
-    ) -> None:
+    def _arm_timeout(self, entry: SessionEntry, token: str, kind: _TimeoutKind) -> None:
+        delay = (
+            self._settings.mayfly_connect_timeout
+            if kind == "connect"
+            else self._settings.mayfly_disconnect_timeout
+        )
         cancel = Event()
         entry.timeout_cancel = cancel
         entry.timeout_task = create_task(
-            self._close_after_timeout(token, delay, timeout_name, cancel)
+            self._close_after_timeout(token, kind, delay, cancel)
         )
 
     async def _start_sandbox(
@@ -197,15 +187,13 @@ class SessionManager:
                     current.start_task = None
                     current.ready_event.set()
                     if remove_on_error:
-                        cancel = current.timeout_cancel
-                        current.timeout_cancel = None
-                        current.timeout_task = None
+                        cancel = _detach_timeout(current)
                         self._sessions.pop(token, None)
             if cancel is not None:
                 cancel.set()
             raise
 
-        stop_sandbox_id: str | None = None
+        stop_id: str | None = None
         async with self._lock:
             current = self._sessions.get(token)
             if (
@@ -213,21 +201,21 @@ class SessionManager:
                 or current is not entry
                 or current.session.state == SessionState.CLOSING
             ):
-                stop_sandbox_id = sandbox_id
+                stop_id = sandbox_id
             else:
                 current.session.state = SessionState.READY
                 current.session.sandbox_id = sandbox_id
                 current.start_task = None
                 current.ready_event.set()
 
-        if stop_sandbox_id is not None:
-            await self._runtime.stop_sandbox(stop_sandbox_id)
+        if stop_id is not None:
+            await self._runtime.stop_sandbox(stop_id)
 
     async def _close_after_timeout(
         self,
         token: str,
+        kind: _TimeoutKind,
         delay: float,
-        timeout_name: Literal["connect", "disconnect"],
         cancel: Event,
     ) -> None:
         try:
@@ -246,30 +234,33 @@ class SessionManager:
             if entry.client_connected:
                 return
 
-        logger.warning(f"Session {token} reached {timeout_name} timeout after {delay}s — closing")
+        logger.warning(f"Session {token} reached {kind} timeout after {delay}s — closing")
         await self.close(token)
 
     async def _close_session(self, token: str, entry: SessionEntry) -> None:
-        cancel = entry.timeout_cancel
-        entry.timeout_cancel = None
-        entry.timeout_task = None
+        cancel = _detach_timeout(entry)
         if cancel is not None:
             cancel.set()
 
-        cleanup_succeeded = False
         try:
             if entry.start_task is not None:
                 with suppress(Exception):
                     await entry.start_task
             if entry.session.sandbox_id is not None:
                 await self._runtime.stop_sandbox(entry.session.sandbox_id)
-            cleanup_succeeded = True
         except Exception as error:
             entry.cleanup_error = error
             logger.exception(f"Failed to clean up session {token}")
+            async with self._lock:
+                entry.close_task = None
+            return
 
         async with self._lock:
-            if cleanup_succeeded:
-                self._sessions.pop(token, None)
-            else:
-                entry.close_task = None
+            self._sessions.pop(token, None)
+
+
+def _detach_timeout(entry: SessionEntry) -> Event | None:
+    cancel = entry.timeout_cancel
+    entry.timeout_cancel = None
+    entry.timeout_task = None
+    return cancel
