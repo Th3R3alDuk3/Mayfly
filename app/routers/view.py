@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.routers.proxy import SESSION_COOKIE
 from app.services.session import SessionManager
 
 router = APIRouter()
@@ -57,11 +58,19 @@ async def view_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="view.html",
         context={"token": token},
     )
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        path="/",
+        httponly=True,
+        samesite="strict",
+    )
+    return response
 
 
 async def http_exception_handler(

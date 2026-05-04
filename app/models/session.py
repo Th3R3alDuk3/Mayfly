@@ -5,8 +5,6 @@ from time import time
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.sandbox import Sandbox
-
 
 class SessionState(StrEnum):
     STARTING = "starting"
@@ -24,9 +22,9 @@ class ConnectResult(StrEnum):
 class Session(BaseModel):
     created_at: float = Field(default_factory=time)
     token: str = Field(default_factory=lambda: token_hex(24))
-    password: str = Field(default_factory=lambda: token_hex(24), repr=False)
+    password: str = Field(default_factory=lambda: token_hex(12), repr=False)
     state: SessionState = SessionState.STARTING
-    sandbox: Sandbox | None = None
+    sandbox_id: str | None = None
     error: str | None = None
 
 
@@ -44,7 +42,6 @@ class SessionStatusResponse(BaseModel):
 class SessionLifecycleEvent(BaseModel):
     state: SessionState
     error: str | None = None
-    url: str | None = None
     password: str | None = None
 
 

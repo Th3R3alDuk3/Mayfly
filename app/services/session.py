@@ -131,9 +131,9 @@ class SessionManager:
         entry = self._sessions.get(token)
         if entry is None:
             raise RuntimeError("Session not found")
-        if entry.session.state != SessionState.READY or entry.session.sandbox is None:
+        if entry.session.state != SessionState.READY or entry.session.sandbox_id is None:
             raise RuntimeError("Session not ready")
-        await self._runtime.upload_to_workspace(entry.session.sandbox.id, filename, chunks)
+        await self._runtime.upload_to_workspace(entry.session.sandbox_id, filename, chunks)
 
     async def close(self, token: str, *, raise_errors: bool = False) -> None:
         async with self._lock:
@@ -185,7 +185,7 @@ class SessionManager:
         remove_on_error: bool,
     ) -> None:
         try:
-            sandbox = await self._runtime.start_sandbox(token, entry.session.password)
+            sandbox_id = await self._runtime.start_sandbox(token, entry.session.password)
         except Exception as error:
             logger.exception(f"Failed to start session {token}")
             cancel: Event | None = None
@@ -213,10 +213,10 @@ class SessionManager:
                 or current is not entry
                 or current.session.state == SessionState.CLOSING
             ):
-                stop_sandbox_id = sandbox.id
+                stop_sandbox_id = sandbox_id
             else:
                 current.session.state = SessionState.READY
-                current.session.sandbox = sandbox
+                current.session.sandbox_id = sandbox_id
                 current.start_task = None
                 current.ready_event.set()
 
@@ -261,8 +261,8 @@ class SessionManager:
             if entry.start_task is not None:
                 with suppress(Exception):
                     await entry.start_task
-            if entry.session.sandbox is not None:
-                await self._runtime.stop_sandbox(entry.session.sandbox.id)
+            if entry.session.sandbox_id is not None:
+                await self._runtime.stop_sandbox(entry.session.sandbox_id)
             cleanup_succeeded = True
         except Exception as error:
             entry.cleanup_error = error

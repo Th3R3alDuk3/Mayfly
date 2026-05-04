@@ -19,7 +19,7 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL}
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
         APP_PORT: ${APP_PORT}
-    image: app:0.2.0
+    image: app:0.3.0
     restart: unless-stopped
     env_file: .env
     ports:

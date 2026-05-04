@@ -32,6 +32,4 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 USER user
 WORKDIR /home/user
 
-# Port comes from MAYFLY_PORT env (set by app at container runtime).
-
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

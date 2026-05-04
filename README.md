@@ -19,13 +19,15 @@ The sandboxes are intentionally disposable: no local editor setup, no persistent
 ```mermaid
 flowchart LR
   B([Browser]) -- HTTP + WS --> A[FastAPI app]
-  A -- Docker API --> M[[Mayfly sandbox<br/>OpenCode + OpenChamber]]
-  B -. iframe + upload .-> M
+  A -- reverse proxy --> M[[Mayfly sandbox<br/>OpenCode + OpenChamber]]
+  A -- Docker API --> M
 ```
 
 - The FastAPI app creates and tracks sessions.
-- Each session starts one sandbox container on an allocated host port.
-- The browser embeds OpenChamber directly in an iframe.
+- Each session starts one sandbox container on the shared `mayfly-net` Docker network — sandboxes have **no host port mapping**.
+- The browser visits `/view/{token}`, gets a session cookie, and loads OpenChamber via a same-origin reverse proxy at `/mayfly/`.
+- The reverse proxy is a small in-house module ([`app/services/proxy.py`](app/services/proxy.py), HTTP via `httpx` + WS via `websockets`) — no third-party proxy dependency.
+- A lifecycle WebSocket (`/sessions/{token}/lifecycle`) signals tab close so the sandbox is torn down after a short delay.
 - `$HOME` and `/tmp` inside the sandbox are tmpfs mounts, so every new session starts clean.
 - `docker/entrypoint.sh` generates OpenCode config, OpenChamber settings, the workspace directory, and a small `AGENTS.md`.
 
@@ -59,11 +61,9 @@ All runtime configuration lives in [.env](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
-| `PUBLIC_HOST`, `APP_PORT`, `APP_BIND_HOST` | external URL generation and FastAPI bind address |
+| `APP_PORT`, `APP_BIND_HOST` | FastAPI port and bind address |
 | `TZ` | timezone applied to the app and every sandbox |
 | `MAYFLY_IMAGE` | per-session sandbox image |
-| `MAYFLY_HOST_PORT_START`, `MAYFLY_HOST_PORT_END` | host port range for sandbox containers |
-| `MAYFLY_BIND_HOST` | bind address for sandbox ports |
 | `MAYFLY_MAX_SESSIONS` | max concurrent sessions |
 | `MAYFLY_MEMORY`, `MAYFLY_CPUS` | per-sandbox resource limits |
 | `MAYFLY_HOME_SIZE`, `MAYFLY_TMP_SIZE` | sandbox `$HOME` and `/tmp` tmpfs sizes |
@@ -80,22 +80,25 @@ For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_
 
 - `GET /` - browser entrypoint
 - `POST /view` - create a browser session and redirect to `/view/{token}`
-- `GET /view/{token}` - browser view for one session
+- `GET /view/{token}` - browser view for one session (sets `mayfly_session` cookie)
 - `POST /sessions` - create a session via API, returns `url` and `password`
 - `GET /sessions/status` - active, available, and limit counts
 - `POST /sessions/{token}/upload` - password-protected file upload into the workspace
 - `DELETE /sessions/{token}` - stop a session
-- `WS /sessions/{token}/lifecycle` - browser lifecycle channel
+- `WS /sessions/{token}/lifecycle` - browser lifecycle channel (drives the disconnect timeout)
+- `/mayfly/...` and any unmatched path - reverse-proxied to the sandbox identified by the `mayfly_session` cookie
 - `/docs` - OpenAPI docs
 - `/mcp/` - MCP endpoint
 
 Static UI assets are served under `/static/*`; `/favicon.ico` serves the Mayfly logo.
 
+The cookie-routed proxy means **one active OpenChamber session per browser origin**. Opening a second tab on the same origin overwrites the cookie and points API/WS traffic at the new session. The first tab detects this via a `BroadcastChannel('mayfly-session')` claim, hides its iframe, and closes its lifecycle WebSocket — that triggers the regular disconnect cleanup for the displaced container.
+
 ## 🛡️ Security Model
 
-Sandbox containers run as an unprivileged user with a read-only root filesystem, dropped Linux capabilities, `no-new-privileges`, PID/memory/CPU limits, and tmpfs mounts for writable runtime state.
+Sandbox containers run as an unprivileged user with a read-only root filesystem, dropped Linux capabilities, `no-new-privileges`, PID/memory/CPU limits, and tmpfs mounts for writable runtime state. Sandboxes have no host port mapping — they are only reachable through the app's reverse proxy.
 
-Mayfly is still alpha. If you bind the app or sandbox ports to a public interface, put it behind trusted network controls.
+Mayfly is still alpha. If you bind the app to a public interface, put it behind trusted network controls.
 
 ## 🧩 Layout
 

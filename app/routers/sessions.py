@@ -34,25 +34,12 @@ class _SessionClosedByManager(Exception):
     pass
 
 
-def _lifecycle_event(
-    session: Session,
-    host: str,
-    *,
-    include_password: bool = False,
-) -> SessionLifecycleEvent:
-    url_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    url = (
-        f"http://{url_host}:{session.sandbox.port}/"
-        if session.state == SessionState.READY and session.sandbox is not None
-        else None
-    )
-    password = session.password if include_password else None
+def _lifecycle_event(session: Session, *, include_password: bool) -> dict[str, object]:
     return SessionLifecycleEvent(
         state=session.state,
         error=session.error,
-        url=url,
-        password=password,
-    )
+        password=session.password if include_password else None,
+    ).model_dump(mode="json")
 
 
 @router.get(
@@ -167,10 +154,8 @@ async def delete_session(
 async def session_lifecycle(
     token: str,
     websocket: WebSocket,
-    settings: SettingsDep,
 ) -> None:
     manager: SessionManager = websocket.app.state.manager
-    host = (websocket.url.hostname or "").strip() or settings.public_host
 
     await websocket.accept()
 
@@ -194,9 +179,7 @@ async def session_lifecycle(
             await websocket.close(code=4004, reason="unknown token")
             return
 
-        await websocket.send_json(
-            _lifecycle_event(session, host, include_password=True).model_dump(mode="json")
-        )
+        await websocket.send_json(_lifecycle_event(session, include_password=True))
 
         if session.state == SessionState.STARTING:
             session = await manager.wait_ready(token)
@@ -204,9 +187,7 @@ async def session_lifecycle(
                 arm_disconnect_timeout = False
                 await websocket.close(code=4004, reason="unknown token")
                 return
-            await websocket.send_json(
-                _lifecycle_event(session, host, include_password=True).model_dump(mode="json")
-            )
+            await websocket.send_json(_lifecycle_event(session, include_password=True))
 
         if session.state != SessionState.READY:
             arm_disconnect_timeout = False

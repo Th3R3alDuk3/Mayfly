@@ -25,7 +25,6 @@
                     disabled:cursor-not-allowed disabled:opacity-50
                     dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300
                     dark:hover:bg-neutral-800"
-             data-upload-label
              title="Upload file to workspace">
         <span data-upload-text>Upload</span>
         <input type="file"
@@ -68,9 +67,7 @@
     <iframe id="session-frame"
             class="hidden min-h-0 flex-1 w-full border-0"
             title="Mayfly session"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
-            allow="clipboard-read; clipboard-write"
-            referrerpolicy="no-referrer"></iframe>
+            allow="clipboard-read; clipboard-write"></iframe>
   </main>
 
   <div class="fixed inset-0 z-50 hidden items-center justify-center
@@ -88,13 +85,12 @@
         Session password
       </h2>
       <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-        Use this password to unlock your Mayfly session in the iframe.
+        Enter this password if OpenChamber prompts for it.
       </p>
       <div class="mt-4 flex items-center gap-2 rounded-md border
                   border-neutral-200 bg-neutral-50 px-3 py-2
                   dark:border-neutral-800 dark:bg-neutral-950">
-        <code id="session-password"
-              class="flex-1 truncate font-mono text-sm font-semibold
+        <code class="flex-1 truncate font-mono text-sm font-semibold
                      text-emerald-700 dark:text-emerald-400"
               data-session-password-value></code>
         <button type="button"

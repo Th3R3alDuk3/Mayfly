@@ -8,10 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi_offline import FastAPIOffline
 from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
+from httpx import AsyncClient
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
-from app.routers import sessions, view
+from app.routers import proxy, sessions, view
 from app.routers.view import http_exception_handler
 from app.services.session import SessionManager
 
@@ -22,16 +23,15 @@ logger = getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
-    logger.info(
-        f"Mayfly up — listen :{settings.app_port}, "
-        f"public http://{settings.public_host}:{settings.app_port}"
-    )
+    logger.info(f"Mayfly up — listen :{settings.app_port}")
     manager = SessionManager(settings)
     await manager.remove_managed_sandboxes()
     app.state.manager = manager
+    app.state.proxy_client = AsyncClient(timeout=None)
     try:
         yield
     finally:
+        await app.state.proxy_client.aclose()
         await app.state.manager.close_all()
 
 
@@ -54,3 +54,5 @@ app.router.lifespan_context = combine_lifespans(lifespan, mcp_app.lifespan)
 
 app.mount(path="/mcp", app=mcp_app, name="mcp")
 app.mount(path="/static", app=StaticFiles(directory="app/static"), name="static")
+
+app.include_router(proxy.router)
