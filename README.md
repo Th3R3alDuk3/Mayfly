@@ -61,6 +61,7 @@ All runtime configuration lives in [.env](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
+| `PUBLIC_HOST` | external host or full base URL used in API/MCP session links |
 | `APP_PORT`, `APP_BIND_HOST` | FastAPI port and bind address |
 | `TZ` | timezone applied to the app and every sandbox |
 | `MAYFLY_IMAGE` | per-session sandbox image |

@@ -64,6 +64,7 @@ async def get_sessions_status(
 )
 async def create_session(
     request: Request,
+    settings: SettingsDep,
 ) -> SessionCreateResponse:
     manager: SessionManager = request.app.state.manager
 
@@ -73,7 +74,7 @@ async def create_session(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     return SessionCreateResponse(
-        url=str(request.url_for("view_session", token=session.token)),
+        url=f"http://{settings.public_host}:{settings.app_port}/view/{session.token}",
         password=session.password,
     )
 
