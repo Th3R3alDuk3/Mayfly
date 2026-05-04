@@ -2,6 +2,7 @@ from asyncio import Event, Lock, create_task, gather, timeout
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from logging import getLogger
+from typing import Literal
 
 from app.config import Settings
 from app.models.session import (
@@ -11,7 +12,7 @@ from app.models.session import (
     SessionState,
     SessionStatusResponse,
 )
-from app.services.docker import DockerRuntime
+from app.services.sandbox import SandboxRuntime
 
 logger = getLogger(__name__)
 
@@ -19,9 +20,12 @@ logger = getLogger(__name__)
 class SessionManager:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._runtime = DockerRuntime(settings)
+        self._runtime = SandboxRuntime(settings)
         self._sessions: dict[str, SessionEntry] = {}
         self._lock = Lock()
+
+    async def remove_managed_sandboxes(self) -> None:
+        await self._runtime.remove_managed_sandboxes()
 
     def get(self, token: str) -> Session | None:
         entry = self._sessions.get(token)
@@ -37,7 +41,7 @@ class SessionManager:
             limit=self._settings.mayfly_max_sessions,
         )
 
-    async def reserve(self, *, start_cleanup: bool = True) -> Session:
+    async def reserve(self, *, arm_connect_timeout: bool = True) -> Session:
         entry = SessionEntry(session=Session())
         token = entry.session.token
 
@@ -45,13 +49,13 @@ class SessionManager:
             if len(self._sessions) >= self._settings.mayfly_max_sessions:
                 raise RuntimeError("Max mayfly limit reached")
             self._sessions[token] = entry
-            if start_cleanup:
+            if arm_connect_timeout:
                 self._arm_timeout(entry, token, self._settings.mayfly_connect_timeout, "connect")
 
         return entry.session
 
     async def create(self) -> Session:
-        session = await self.reserve(start_cleanup=False)
+        session = await self.reserve(arm_connect_timeout=False)
         try:
             await self.start(session.token, remove_on_error=True)
         except Exception as error:
@@ -75,7 +79,7 @@ class SessionManager:
                 return
             if entry.start_task is None:
                 entry.start_task = create_task(
-                    self._start_session_container(token, entry, remove_on_error)
+                    self._start_sandbox(token, entry, remove_on_error)
                 )
             start_task = entry.start_task
 
@@ -127,9 +131,9 @@ class SessionManager:
         entry = self._sessions.get(token)
         if entry is None:
             raise RuntimeError("Session not found")
-        if entry.session.state != SessionState.READY or entry.session.container is None:
+        if entry.session.state != SessionState.READY or entry.session.sandbox is None:
             raise RuntimeError("Session not ready")
-        await self._runtime.upload_to_workspace(entry.session.container.id, filename, chunks)
+        await self._runtime.upload_to_workspace(entry.session.sandbox.id, filename, chunks)
 
     async def close(self, token: str, *, raise_errors: bool = False) -> None:
         async with self._lock:
@@ -161,15 +165,12 @@ class SessionManager:
         finally:
             await self._runtime.close()
 
-    async def cleanup_stale_containers(self) -> None:
-        await self._runtime.remove_managed_containers()
-
     def _arm_timeout(
         self,
         entry: SessionEntry,
         token: str,
         delay: float,
-        timeout_name: str,
+        timeout_name: Literal["connect", "disconnect"],
     ) -> None:
         cancel = Event()
         entry.timeout_cancel = cancel
@@ -177,14 +178,14 @@ class SessionManager:
             self._close_after_timeout(token, delay, timeout_name, cancel)
         )
 
-    async def _start_session_container(
+    async def _start_sandbox(
         self,
         token: str,
         entry: SessionEntry,
         remove_on_error: bool,
     ) -> None:
         try:
-            container = await self._runtime.start_session_container(token, entry.session.password)
+            sandbox = await self._runtime.start_sandbox(token, entry.session.password)
         except Exception as error:
             logger.exception(f"Failed to start session {token}")
             cancel: Event | None = None
@@ -204,7 +205,7 @@ class SessionManager:
                 cancel.set()
             raise
 
-        stop_container_id: str | None = None
+        stop_sandbox_id: str | None = None
         async with self._lock:
             current = self._sessions.get(token)
             if (
@@ -212,21 +213,21 @@ class SessionManager:
                 or current is not entry
                 or current.session.state == SessionState.CLOSING
             ):
-                stop_container_id = container.id
+                stop_sandbox_id = sandbox.id
             else:
                 current.session.state = SessionState.READY
-                current.session.container = container
+                current.session.sandbox = sandbox
                 current.start_task = None
                 current.ready_event.set()
 
-        if stop_container_id is not None:
-            await self._runtime.stop_container(stop_container_id)
+        if stop_sandbox_id is not None:
+            await self._runtime.stop_sandbox(stop_sandbox_id)
 
     async def _close_after_timeout(
         self,
         token: str,
         delay: float,
-        timeout_name: str,
+        timeout_name: Literal["connect", "disconnect"],
         cancel: Event,
     ) -> None:
         try:
@@ -260,8 +261,8 @@ class SessionManager:
             if entry.start_task is not None:
                 with suppress(Exception):
                     await entry.start_task
-            if entry.session.container is not None:
-                await self._runtime.stop_container(entry.session.container.id)
+            if entry.session.sandbox is not None:
+                await self._runtime.stop_sandbox(entry.session.sandbox.id)
             cleanup_succeeded = True
         except Exception as error:
             entry.cleanup_error = error

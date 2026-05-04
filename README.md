@@ -14,7 +14,7 @@ Mayfly starts short-lived OpenChamber workspaces backed by OpenCode. Each browse
 
 The sandboxes are intentionally disposable: no local editor setup, no persistent sandbox state, and automatic cleanup after disconnect.
 
-## 🌊 How It Works
+## 🛠️ How It Works
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
 - `$HOME` and `/tmp` inside the sandbox are tmpfs mounts, so every new session starts clean.
 - `docker/entrypoint.sh` generates OpenCode config, OpenChamber settings, the workspace directory, and a small `AGENTS.md`.
 
-## ✅ Requirements
+## 📋 Requirements
 
 - Docker with access to `/var/run/docker.sock`
 - Python 3.13+ for local development
@@ -60,6 +60,7 @@ All runtime configuration lives in [.env](.env.example).
 | Variable | Purpose |
 | --- | --- |
 | `PUBLIC_HOST`, `APP_PORT`, `APP_BIND_HOST` | external URL generation and FastAPI bind address |
+| `TZ` | timezone applied to the app and every sandbox |
 | `MAYFLY_IMAGE` | per-session sandbox image |
 | `MAYFLY_HOST_PORT_START`, `MAYFLY_HOST_PORT_END` | host port range for sandbox containers |
 | `MAYFLY_BIND_HOST` | bind address for sandbox ports |
@@ -75,7 +76,7 @@ All runtime configuration lives in [.env](.env.example).
 
 For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_REGISTRY`, and `NPM_STRICT_SSL`.
 
-## 🌐 API Surface
+## 🔌 API Surface
 
 - `GET /` - browser entrypoint
 - `POST /view` - create a browser session and redirect to `/view/{token}`
@@ -90,7 +91,7 @@ For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_
 
 Static UI assets are served under `/static/*`; `/favicon.ico` serves the Mayfly logo.
 
-## 🔒 Security Model
+## 🛡️ Security Model
 
 Sandbox containers run as an unprivileged user with a read-only root filesystem, dropped Linux capabilities, `no-new-privileges`, PID/memory/CPU limits, and tmpfs mounts for writable runtime state.
 

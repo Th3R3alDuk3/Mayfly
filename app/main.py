@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         f"public http://{settings.public_host}:{settings.app_port}"
     )
     manager = SessionManager(settings)
-    await manager.cleanup_stale_containers()
+    await manager.remove_managed_sandboxes()
     app.state.manager = manager
     try:
         yield

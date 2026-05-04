@@ -17,7 +17,7 @@ from tenacity import (
 )
 
 from app.config import Settings
-from app.models.docker import Container
+from app.models.sandbox import Sandbox
 
 logger = getLogger(__name__)
 
@@ -42,12 +42,12 @@ def _is_port_binding_error(error: DockerError) -> bool:
     return "address already in use" in message or "port is already allocated" in message
 
 
-class DockerRuntime:
+class SandboxRuntime:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._client = Docker()
 
-    async def start_session_container(self, token: str, password: str) -> Container:
+    async def start_sandbox(self, token: str, password: str) -> Sandbox:
         container: DockerContainer | None = None
         try:
             container = await self._run_container(token, password)
@@ -55,12 +55,12 @@ class DockerRuntime:
 
             short_id = container.id[:12]
             logger.info(
-                f"Container started: {short_id} "
+                f"Sandbox started: {short_id} "
                 f"(mayfly-{token} @ {ip}, host:{port}) — waiting for ready"
             )
             await self._wait_ready(ip, _MAYFLY_CONTAINER_PORT)
-            logger.info(f"Container ready: {short_id} (mayfly-{token})")
-            return Container(id=container.id, port=port)
+            logger.info(f"Sandbox ready: {short_id} (mayfly-{token})")
+            return Sandbox(id=container.id, port=port)
         except Exception:
             if container is not None:
                 with suppress(DockerError):
@@ -70,15 +70,15 @@ class DockerRuntime:
 
     async def upload_to_workspace(
         self,
-        container_id: str,
+        sandbox_id: str,
         filename: str,
         chunks: AsyncIterator[bytes],
     ) -> None:
         try:
-            container = await self._client.containers.get(container_id)
+            container = await self._client.containers.get(sandbox_id)
         except DockerError as error:
             if error.status == 404:
-                raise RuntimeError("Container not found") from error
+                raise RuntimeError("Sandbox not found") from error
             raise
 
         target_path = f"{_MAYFLY_HOME}/{self._settings.mayfly_workspace_dir}/{filename}"
@@ -105,12 +105,12 @@ class DockerRuntime:
         if exit_code != 0:
             raise RuntimeError(f"Upload exec failed (exit {exit_code})")
 
-    async def stop_container(self, container_id: str) -> None:
+    async def stop_sandbox(self, sandbox_id: str) -> None:
         try:
-            container = await self._client.containers.get(container_id)
+            container = await self._client.containers.get(sandbox_id)
         except DockerError as error:
             if error.status == 404:
-                logger.info(f"Container already gone: {container_id}")
+                logger.info(f"Sandbox already gone: {sandbox_id}")
                 return
             raise
 
@@ -119,39 +119,39 @@ class DockerRuntime:
             await container.stop(t=5)
         except DockerError as error:
             if error.status == 404:
-                logger.info(f"Container already stopped: {container_id}")
+                logger.info(f"Sandbox already stopped: {sandbox_id}")
                 return
-            logger.warning(f"Failed to stop container {container_id}, forcing removal: {error}")
+            logger.warning(f"Failed to stop sandbox {sandbox_id}, forcing removal: {error}")
             force_delete = True
 
         try:
             await container.delete(force=force_delete)
         except DockerError as error:
             if error.status == 404:
-                logger.info(f"Container already removed: {container_id}")
+                logger.info(f"Sandbox already removed: {sandbox_id}")
                 return
-            raise RuntimeError(f"Failed to remove container {container_id}: {error}") from error
+            raise RuntimeError(f"Failed to remove sandbox {sandbox_id}: {error}") from error
 
-        logger.info(f"Container {'force ' if force_delete else ''}removed: {container_id}")
+        logger.info(f"Sandbox {'force ' if force_delete else ''}removed: {sandbox_id}")
 
-    async def remove_managed_containers(self) -> None:
+    async def remove_managed_sandboxes(self) -> None:
         try:
             containers = await self._client.containers.list(
                 all=True,
                 filters={"label": [f"{_MANAGED_LABEL}={_MANAGED_LABEL_VALUE}"]},
             )
         except DockerError as error:
-            logger.warning(f"Failed to list managed containers: {error}")
+            logger.warning(f"Failed to list managed sandboxes: {error}")
             return
 
         for container in containers:
             try:
                 await container.delete(force=True)
-                logger.info(f"Removed stale managed container: {container.id[:12]}")
+                logger.info(f"Removed stale managed sandbox: {container.id[:12]}")
             except DockerError as error:
                 if error.status == 404:
                     continue
-                logger.warning(f"Failed to remove stale container {container.id[:12]}: {error}")
+                logger.warning(f"Failed to remove stale sandbox {container.id[:12]}: {error}")
 
     async def close(self) -> None:
         await self._client.close()
@@ -189,7 +189,7 @@ class DockerRuntime:
         password: str,
         host_port: int,
     ) -> DockerContainer:
-        config = self._session_container_config(token, password, host_port)
+        config = self._sandbox_container_config(token, password, host_port)
         name = f"mayfly-{token}"
         try:
             return await self._client.containers.create(config=config, name=name)
@@ -204,7 +204,7 @@ class DockerRuntime:
                 return await self._client.containers.create(config=config, name=name)
             raise
 
-    def _session_container_config(
+    def _sandbox_container_config(
         self,
         token: str,
         password: str,
@@ -264,12 +264,12 @@ class DockerRuntime:
 
         ip = network_settings.get("Networks", {}).get(_MAYFLY_NETWORK, {}).get("IPAddress")
         if not ip:
-            raise RuntimeError(f"Container {container.id[:12]}: no IP on {_MAYFLY_NETWORK}")
+            raise RuntimeError(f"Sandbox {container.id[:12]}: no IP on {_MAYFLY_NETWORK}")
 
         bindings = network_settings.get("Ports", {}).get(f"{_MAYFLY_CONTAINER_PORT}/tcp") or []
         if not bindings:
             raise RuntimeError(
-                f"Container {container.id[:12]}: "
+                f"Sandbox {container.id[:12]}: "
                 f"no host port mapped for {_MAYFLY_CONTAINER_PORT}/tcp"
             )
 

@@ -5,7 +5,7 @@ from time import time
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.docker import Container
+from app.models.sandbox import Sandbox
 
 
 class SessionState(StrEnum):
@@ -21,31 +21,13 @@ class ConnectResult(StrEnum):
     BUSY = "busy"
 
 
-def _magic() -> str:
-    return token_hex(24)
-
-
 class Session(BaseModel):
     created_at: float = Field(default_factory=time)
-    token: str = Field(default_factory=_magic)
-    password: str = Field(default_factory=_magic, repr=False)
+    token: str = Field(default_factory=lambda: token_hex(24))
+    password: str = Field(default_factory=lambda: token_hex(24), repr=False)
     state: SessionState = SessionState.STARTING
-    container: Container | None = None
+    sandbox: Sandbox | None = None
     error: str | None = None
-
-
-class SessionEntry(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    session: Session
-    ready_event: Event = Field(default_factory=Event)
-    close_event: Event = Field(default_factory=Event)
-    client_connected: bool = False
-    start_task: Task[None] | None = None
-    close_task: Task[None] | None = None
-    timeout_task: Task[None] | None = None
-    timeout_cancel: Event | None = None
-    cleanup_error: Exception | None = None
 
 
 class SessionCreateResponse(BaseModel):
@@ -64,3 +46,17 @@ class SessionLifecycleEvent(BaseModel):
     error: str | None = None
     url: str | None = None
     password: str | None = None
+
+
+class SessionEntry(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    session: Session
+    ready_event: Event = Field(default_factory=Event)
+    close_event: Event = Field(default_factory=Event)
+    client_connected: bool = False
+    start_task: Task[None] | None = None
+    close_task: Task[None] | None = None
+    timeout_task: Task[None] | None = None
+    timeout_cancel: Event | None = None
+    cleanup_error: Exception | None = None

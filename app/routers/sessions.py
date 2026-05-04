@@ -42,8 +42,8 @@ def _lifecycle_event(
 ) -> SessionLifecycleEvent:
     url_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
     url = (
-        f"http://{url_host}:{session.container.port}/"
-        if session.state == SessionState.READY and session.container is not None
+        f"http://{url_host}:{session.sandbox.port}/"
+        if session.state == SessionState.READY and session.sandbox is not None
         else None
     )
     password = session.password if include_password else None
