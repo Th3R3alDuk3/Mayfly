@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import spinner, logo, button, button_upload, pill %}
 
 {% block title %}Mayfly Session{% endblock %}
 
@@ -7,42 +8,21 @@
   <header class="flex h-14 shrink-0 items-center justify-between
                  border-b border-neutral-200 px-5 dark:border-neutral-800">
     <div class="flex items-center gap-2.5">
-      <img class="block h-12 w-12"
-           src="/static/logo.png"
-           alt=""
-           width="512"
-           height="512"
-           decoding="async"
-           fetchpriority="high">
+      {{ logo(size="md", alt="", priority=true) }}
       <span class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
         Mayfly
       </span>
     </div>
     <div class="flex items-center gap-2">
-      <label class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md
-                    border border-neutral-200 bg-neutral-100 px-3 text-xs
-                    text-neutral-600 hover:bg-neutral-200
-                    disabled:cursor-not-allowed disabled:opacity-50
-                    dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300
-                    dark:hover:bg-neutral-800"
-             title="Upload file to workspace">
-        <span data-upload-text>Upload</span>
-        <input type="file"
-               class="hidden"
-               data-upload-input
-               disabled>
-      </label>
-      <div class="flex h-7 min-w-12 items-center justify-center rounded-md
-                  border border-neutral-200 bg-neutral-100 px-3
-                  text-xs text-neutral-500
-                  dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
-           title="Sessions: active / limit">
+      {{ button_upload() }}
+      {% call pill(extra_class="flex min-w-12 items-center justify-center text-neutral-500 dark:text-neutral-400",
+                   attrs='title="Sessions: active / limit"') %}
         <span id="session-status-value"
               class="block text-center font-mono leading-none tabular-nums"
               aria-live="polite">
           -/-
         </span>
-      </div>
+      {% endcall %}
     </div>
   </header>
 
@@ -51,18 +31,13 @@
         data-session-token="{{ token }}">
     <div id="session-loading"
          class="flex min-h-0 flex-1 flex-col items-center justify-center gap-5">
-      <img class="block h-56 w-56"
-           src="/static/logo.png"
-           alt=""
-           width="512"
-           height="512"
-           decoding="async">
+      {{ logo(size="xl", alt="") }}
       <span id="session-message"
             class="text-sm text-neutral-500 dark:text-neutral-400"
             aria-live="polite">
         Starting Mayfly...
       </span>
-      <div id="session-spinner">{% include "_loading_spinner.html" %}</div>
+      <div id="session-spinner">{{ spinner() }}</div>
     </div>
     <iframe id="session-frame"
             class="hidden min-h-0 flex-1 w-full border-0"
@@ -91,28 +66,14 @@
                   border-neutral-200 bg-neutral-50 px-3 py-2
                   dark:border-neutral-800 dark:bg-neutral-950">
         <code class="flex-1 truncate font-mono text-sm font-semibold
-                     text-emerald-700 dark:text-emerald-400"
+                     text-red-700 dark:text-red-400"
               data-session-password-value></code>
-        <button type="button"
-                class="shrink-0 rounded-md border border-neutral-200
-                       bg-neutral-100 px-2 py-1 text-xs font-medium
-                       text-neutral-700 hover:bg-neutral-200
-                       dark:border-neutral-700 dark:bg-neutral-800
-                       dark:text-neutral-200 dark:hover:bg-neutral-700"
-                data-session-password-copy>
+        {% call button(attrs='data-session-password-copy') %}
           <span data-session-password-copy-text>Copy</span>
-        </button>
+        {% endcall %}
       </div>
       <div class="mt-5 flex justify-end">
-        <button type="button"
-                class="rounded-md border border-neutral-300 bg-neutral-200
-                       px-4 py-1.5 text-sm font-medium text-neutral-900
-                       hover:bg-neutral-300
-                       dark:border-neutral-700 dark:bg-neutral-800
-                       dark:text-neutral-100 dark:hover:bg-neutral-700"
-                data-session-password-dismiss>
-          Continue
-        </button>
+        {% call button(attrs='data-session-password-dismiss') %}Continue{% endcall %}
       </div>
     </div>
   </div>

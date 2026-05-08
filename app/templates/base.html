@@ -8,11 +8,29 @@
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
   <title>{% block title %}Mayfly{% endblock %}</title>
+  <link rel="stylesheet" href="/static/flexoki.css">
   <script src="/static/tailwindcss-browser-4.2.4.js"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --color-neutral-50:  var(--flexoki-50);
+      --color-neutral-100: var(--flexoki-100);
+      --color-neutral-200: var(--flexoki-150);
+      --color-neutral-300: var(--flexoki-200);
+      --color-neutral-400: var(--flexoki-300);
+      --color-neutral-500: var(--flexoki-500);
+      --color-neutral-600: var(--flexoki-600);
+      --color-neutral-700: var(--flexoki-700);
+      --color-neutral-800: var(--flexoki-850);
+      --color-neutral-900: var(--flexoki-900);
+      --color-neutral-950: var(--flexoki-950);
+      --color-red-400:     var(--flexoki-red-400);
+      --color-red-700:     var(--flexoki-red-600);
+    }
+  </style>
   <script src="/static/mayfly.js" defer></script>
 </head>
-<body class="h-full bg-neutral-50 text-neutral-900 antialiased
-             dark:bg-neutral-950 dark:text-neutral-200">
+<body class="h-full bg-[#f1efe4] text-neutral-900 antialiased
+             dark:bg-[#1C1B1A] dark:text-neutral-200">
   {% block content %}{% endblock %}
 </body>
 </html>

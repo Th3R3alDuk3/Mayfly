@@ -1,17 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros.html" import logo, button %}
 
 {% block title %}Mayfly Error {{ status_code }}{% endblock %}
 
 {% block content %}
 <main class="h-full">
   <div class="flex h-full flex-col items-center justify-center gap-5">
-    <img class="block h-56 w-56"
-         src="/static/logo.png"
-         alt="Mayfly"
-         width="512"
-         height="512"
-         decoding="async"
-         fetchpriority="high">
+    {{ logo(size="xl", priority=true) }}
     <div class="font-mono text-6xl font-semibold tabular-nums
                 text-neutral-900 dark:text-neutral-100">
       {{ status_code }}
@@ -19,13 +14,7 @@
     <span class="max-w-sm px-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
       {{ detail }}
     </span>
-    <a class="mt-2 rounded-md border border-neutral-300 bg-neutral-200 px-5 py-2
-              text-sm font-medium text-neutral-900 hover:bg-neutral-300
-              dark:border-neutral-700 dark:bg-neutral-800
-              dark:text-neutral-100 dark:hover:bg-neutral-700"
-       href="/">
-      Start new session
-    </a>
+    {% call button(href="/", extra_class="mt-2") %}Start new session{% endcall %}
   </div>
 </main>
 {% endblock %}

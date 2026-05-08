@@ -1,0 +1,48 @@
+{% macro spinner() -%}
+<div aria-hidden="true"
+     class="h-9 w-9 animate-spin rounded-full border-4 border-neutral-300 border-t-transparent
+            dark:border-neutral-700 dark:border-t-transparent"></div>
+{%- endmacro %}
+
+
+{% macro logo(size="xl", alt="Mayfly", priority=false) -%}
+{%- set dims = {"xl": "h-56 w-56", "md": "h-12 w-12"} -%}
+<img src="/static/logo.png" alt="{{ alt }}" width="512" height="512" decoding="async"
+     class="block {{ dims[size] }}"
+     {%- if priority %} fetchpriority="high"{% endif %}>
+{%- endmacro %}
+
+
+{% macro pill(tag="div", interactive=false, extra_class="", attrs="") -%}
+{%- set hover = "hover:bg-neutral-200 dark:hover:bg-neutral-800" if interactive else "" -%}
+<{{ tag }} class="h-7 px-3 text-xs bg-neutral-100 rounded-md border border-neutral-200
+                  dark:border-neutral-800 dark:bg-neutral-900 {{ hover }} {{ extra_class }}"
+           {%- if attrs %} {{ attrs|safe }}{% endif %}>{{ caller() }}</{{ tag }}>
+{%- endmacro %}
+
+
+{# Single source of truth for button styling — every button-like macro uses this. #}
+{% macro button_class(extra="") -%}
+px-4 py-1.5 text-sm font-medium text-neutral-900 bg-neutral-200 rounded-md border border-neutral-300
+hover:bg-neutral-300
+dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700
+{{ extra }}
+{%- endmacro %}
+
+
+{% macro button(href=none, type="button", extra_class="", attrs="") -%}
+{%- set cls = button_class(extra_class) -%}
+{%- if href -%}
+<a class="{{ cls }}" href="{{ href }}" {{ attrs|safe }}>{{ caller() }}</a>
+{%- else -%}
+<button class="{{ cls }}" type="{{ type }}" {{ attrs|safe }}>{{ caller() }}</button>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro button_upload(label="Upload", title="Upload file to workspace") -%}
+<label class="{{ button_class('inline-flex cursor-pointer items-center gap-1.5') }}" title="{{ title }}">
+  <span data-upload-text>{{ label }}</span>
+  <input type="file" class="hidden" data-upload-input disabled>
+</label>
+{%- endmacro %}
