@@ -21,7 +21,7 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
 
 RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
-RUN npm install --ignore-scripts -g opencode-ai@1.14.41 @openchamber/web@1.10.2
+RUN npm install --ignore-scripts -g opencode-ai@1.14.46 @openchamber/web@1.10.4
 
 RUN userdel -r node 2>/dev/null || true \
     && useradd -u 1000 -m -s /bin/bash user

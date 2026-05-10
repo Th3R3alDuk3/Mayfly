@@ -144,6 +144,16 @@ class SandboxRuntime:
         if exit_code != 0:
             raise RuntimeError(f"Upload exec failed (exit {exit_code})")
 
+    async def memory_usage(self, sandbox_id: str) -> int:
+        try:
+            container = await self._client.containers.get(sandbox_id)
+            stats = await container.stats(stream=False)
+        except DockerError:
+            return 0
+        if not stats:
+            return 0
+        return int(stats[0].get("memory_stats", {}).get("usage", 0))
+
     async def _create_or_pull(self, token: str, password: str) -> DockerContainer:
         config = self._sandbox_container_config(token, password)
         name = _sandbox_host(token)

@@ -50,9 +50,10 @@ def _lifecycle_event(session: Session, *, include_password: bool) -> dict[str, o
 )
 async def get_sessions_status(
     request: Request,
+    token: str | None = None,
 ) -> SessionStatusResponse:
     manager: SessionManager = request.app.state.manager
-    return manager.status()
+    return await manager.status(token)
 
 
 @router.post(

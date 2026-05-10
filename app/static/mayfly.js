@@ -17,6 +17,7 @@
   const message = document.getElementById('session-message');
   const spinner = document.getElementById('session-spinner');
   const statusValue = document.getElementById('session-status-value');
+  const memoryValue = document.getElementById('docker-memory-value');
   const passwordValues = document.querySelectorAll('[data-session-password-value]');
   const passwordModal = document.querySelector('[data-session-password-modal]');
   const passwordCopyButton = document.querySelector('[data-session-password-copy]');
@@ -56,15 +57,17 @@
   // ---- session status badge -----------------------------------------------
   async function refreshStatus() {
     try {
-      const response = await fetch('/sessions/status', {
+      const response = await fetch(`/sessions/status?token=${encodeURIComponent(token)}`, {
         cache: 'no-store',
         headers: { Accept: 'application/json' },
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const { active, limit } = await response.json();
+      const { active, limit, memory } = await response.json();
       statusValue.textContent = `${active}/${limit}`;
+      if (memoryValue) memoryValue.textContent = memory;
     } catch {
       statusValue.textContent = '-/-';
+      if (memoryValue) memoryValue.textContent = '-/-';
     }
   }
 
@@ -218,7 +221,7 @@
 
   // ---- boot ---------------------------------------------------------------
   refreshStatus();
-  statusInterval = window.setInterval(refreshStatus, 60_000);
+  statusInterval = window.setInterval(refreshStatus, 30_000);
   connectLifecycle();
 
   window.addEventListener('pagehide', () => {

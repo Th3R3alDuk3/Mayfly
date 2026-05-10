@@ -33,12 +33,19 @@ class SessionManager:
         entry = self._sessions.get(token)
         return entry.session if entry is not None else None
 
-    def status(self) -> SessionStatusResponse:
+    async def status(self, token: str | None = None) -> SessionStatusResponse:
         active = len(self._sessions)
+        limit = self._settings.mayfly_max_sessions
+        used = 0
+        entry = self._sessions.get(token) if token is not None else None
+        if entry is not None and entry.session.sandbox_id is not None:
+            used = await self._runtime.memory_usage(entry.session.sandbox_id)
+        mb = 10**6
         return SessionStatusResponse(
             active=active,
-            available=max(0, self._settings.mayfly_max_sessions - active),
-            limit=self._settings.mayfly_max_sessions,
+            available=max(0, limit - active),
+            limit=limit,
+            memory=f"{used // mb}/{int(self._settings.mayfly_memory) // mb} MB",
         )
 
     async def reserve(self, *, arm_connect_timeout: bool = True) -> Session:

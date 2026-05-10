@@ -37,6 +37,7 @@ class SessionStatusResponse(BaseModel):
     active: int = Field(ge=0)
     available: int = Field(ge=0)
     limit: int = Field(gt=0)
+    memory: str
 
 
 class SessionLifecycleEvent(BaseModel):

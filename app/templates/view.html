@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import spinner, logo, button, button_upload, pill %}
+{% from "_macros.html" import spinner, logo, button, button_upload, pill, divider %}
 
 {% block title %}Mayfly Session{% endblock %}
 
@@ -15,6 +15,15 @@
     </div>
     <div class="flex items-center gap-2">
       {{ button_upload() }}
+      {{ divider() }}
+      {% call pill(extra_class="flex items-center justify-center text-neutral-500 dark:text-neutral-400",
+                   attrs='title="Container memory: used / limit"') %}
+        <span id="docker-memory-value"
+              class="block text-center font-mono leading-none tabular-nums"
+              aria-live="polite">
+          -/-
+        </span>
+      {% endcall %}
       {% call pill(extra_class="flex min-w-12 items-center justify-center text-neutral-500 dark:text-neutral-400",
                    attrs='title="Sessions: active / limit"') %}
         <span id="session-status-value"
@@ -65,8 +74,7 @@
       <div class="mt-4 flex items-center gap-2 rounded-md border
                   border-neutral-200 bg-neutral-50 px-3 py-2
                   dark:border-neutral-800 dark:bg-neutral-950">
-        <code class="flex-1 truncate font-mono text-sm font-semibold
-                     text-red-700 dark:text-red-400"
+        <code class="flex-1 truncate font-mono text-sm font-semibold text-[#66800b]"
               data-session-password-value></code>
         {% call button(attrs='data-session-password-copy') %}
           <span data-session-password-copy-text>Copy</span>
