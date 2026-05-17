@@ -83,7 +83,8 @@ For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_
 - `POST /view` - create a browser session and redirect to `/view/{token}`
 - `GET /view/{token}` - browser view for one session (sets `mayfly_session` cookie)
 - `POST /sessions` - create a session via API, returns `url` and `password`
-- `GET /sessions/status` - active, available, limit, and memory usage; pass `?token=<t>` for a single session
+- `GET /sessions/status` - active, available, limit, and total memory usage across all sessions
+- `GET /sessions/{token}/status` - same shape, but memory usage scoped to a single session
 - `POST /sessions/{token}/upload` - password-protected file upload into the workspace
 - `DELETE /sessions/{token}` - stop a session
 - `WS /sessions/{token}/lifecycle` - browser lifecycle channel (drives the disconnect timeout)

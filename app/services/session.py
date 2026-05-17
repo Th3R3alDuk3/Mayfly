@@ -35,27 +35,35 @@ class SessionManager:
         entry = self._sessions.get(token)
         return entry.session if entry is not None else None
 
-    async def status(self, token: str | None = None) -> SessionStatusResponse:
+    async def status(self) -> SessionStatusResponse:
         active = len(self._sessions)
         limit = self._settings.mayfly_max_sessions
-        per_container = int(self._settings.mayfly_memory)
+        total = int(self._settings.mayfly_memory) * limit
 
-        if token is not None:
-            entry = self._sessions.get(token)
-            sandbox_id = entry.session.sandbox_id if entry is not None else None
-            used = await self._runtime.memory_usage(sandbox_id) if sandbox_id else 0
-            total = per_container
-        else:
-            sandbox_ids = [
-                e.session.sandbox_id
-                for e in self._sessions.values()
-                if e.session.sandbox_id is not None
-            ]
-            usages = await gather(
-                *(self._runtime.memory_usage(sid) for sid in sandbox_ids)
-            )
-            used = sum(usages)
-            total = per_container * limit
+        sandbox_ids = [
+            e.session.sandbox_id
+            for e in self._sessions.values()
+            if e.session.sandbox_id is not None
+        ]
+        usages = await gather(*(self._runtime.memory_usage(sid) for sid in sandbox_ids))
+        used = sum(usages)
+
+        mb = 10**6
+        return SessionStatusResponse(
+            active=active,
+            available=max(0, limit - active),
+            limit=limit,
+            memory=f"{used // mb}/{total // mb} MB",
+        )
+
+    async def session_status(self, token: str) -> SessionStatusResponse:
+        active = len(self._sessions)
+        limit = self._settings.mayfly_max_sessions
+        total = int(self._settings.mayfly_memory)
+
+        entry = self._sessions.get(token)
+        sandbox_id = entry.session.sandbox_id if entry is not None else None
+        used = await self._runtime.memory_usage(sandbox_id) if sandbox_id else 0
 
         mb = 10**6
         return SessionStatusResponse(

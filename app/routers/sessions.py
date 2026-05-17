@@ -48,12 +48,24 @@ def _lifecycle_event(session: Session, *, include_password: bool) -> dict[str, o
     tags=["sessions"],
     description="Returns the number of active, available, and maximum containers.",
 )
-async def get_sessions_status(
-    request: Request,
-    token: str | None = None,
-) -> SessionStatusResponse:
+async def get_sessions_status(request: Request) -> SessionStatusResponse:
     manager: SessionManager = request.app.state.manager
-    return await manager.status(token)
+    return await manager.status()
+
+
+@router.get(
+    path="/sessions/{token}/status",
+    operation_id="get_mayfly_session_status",
+    tags=["sessions"],
+    description="Returns active/available/limit counts plus memory usage for one session.",
+)
+async def get_session_status(token: str, request: Request) -> SessionStatusResponse:
+    manager: SessionManager = request.app.state.manager
+
+    if manager.get(token) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return await manager.session_status(token)
 
 
 @router.post(

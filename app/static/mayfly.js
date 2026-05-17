@@ -57,7 +57,7 @@
   // ---- session status badge -----------------------------------------------
   async function refreshStatus() {
     try {
-      const response = await fetch(`/sessions/status?token=${encodeURIComponent(token)}`, {
+      const response = await fetch(`/sessions/${encodeURIComponent(token)}/status`, {
         cache: 'no-store',
         headers: { Accept: 'application/json' },
       });
