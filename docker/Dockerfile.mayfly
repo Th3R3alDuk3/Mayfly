@@ -14,6 +14,8 @@ ARG PIP_INDEX_URL
 ARG PIP_TRUSTED_HOST
 ARG NPM_REGISTRY
 ARG NPM_STRICT_SSL
+ARG OPENCODE_NPM_VERSION
+ARG OPENCHAMBER_NPM_VERSION
 
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
@@ -21,7 +23,10 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
 
 RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
-RUN npm install --ignore-scripts -g opencode-ai@1.14.46 @openchamber/web@1.10.4
+RUN npm install --ignore-scripts -g \
+        opencode-ai@${OPENCODE_NPM_VERSION} \
+        @openchamber/web@${OPENCHAMBER_NPM_VERSION} \
+    && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs
 
 RUN userdel -r node 2>/dev/null || true \
     && useradd -u 1000 -m -s /bin/bash user

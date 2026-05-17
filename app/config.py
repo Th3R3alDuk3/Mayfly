@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    public_host: str = Field(min_length=1)
+    public_url: str = Field(min_length=1)
     app_port: int = Field(ge=1, le=65535)
     tz: str = Field(min_length=1)
 

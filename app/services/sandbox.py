@@ -77,7 +77,6 @@ class SandboxRuntime:
             await container.delete(force=True)
         except DockerError as error:
             if error.status == 404:
-                logger.info(f"Sandbox already gone: {sandbox_id}")
                 return
             raise RuntimeError(f"Failed to remove sandbox {sandbox_id}: {error}") from error
         logger.info(f"Sandbox removed: {sandbox_id}")

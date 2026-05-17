@@ -29,23 +29,40 @@ class SessionManager:
     async def remove_managed_sandboxes(self) -> None:
         await self._runtime.remove_managed_sandboxes()
 
-    def get(self, token: str) -> Session | None:
+    def get(self, token: str | None) -> Session | None:
+        if token is None:
+            return None
         entry = self._sessions.get(token)
         return entry.session if entry is not None else None
 
     async def status(self, token: str | None = None) -> SessionStatusResponse:
         active = len(self._sessions)
         limit = self._settings.mayfly_max_sessions
-        used = 0
-        entry = self._sessions.get(token) if token is not None else None
-        if entry is not None and entry.session.sandbox_id is not None:
-            used = await self._runtime.memory_usage(entry.session.sandbox_id)
+        per_container = int(self._settings.mayfly_memory)
+
+        if token is not None:
+            entry = self._sessions.get(token)
+            sandbox_id = entry.session.sandbox_id if entry is not None else None
+            used = await self._runtime.memory_usage(sandbox_id) if sandbox_id else 0
+            total = per_container
+        else:
+            sandbox_ids = [
+                e.session.sandbox_id
+                for e in self._sessions.values()
+                if e.session.sandbox_id is not None
+            ]
+            usages = await gather(
+                *(self._runtime.memory_usage(sid) for sid in sandbox_ids)
+            )
+            used = sum(usages)
+            total = per_container * limit
+
         mb = 10**6
         return SessionStatusResponse(
             active=active,
             available=max(0, limit - active),
             limit=limit,
-            memory=f"{used // mb}/{int(self._settings.mayfly_memory) // mb} MB",
+            memory=f"{used // mb}/{total // mb} MB",
         )
 
     async def reserve(self, *, arm_connect_timeout: bool = True) -> Session:
@@ -225,12 +242,10 @@ class SessionManager:
         delay: float,
         cancel: Event,
     ) -> None:
-        try:
+        with suppress(TimeoutError):
             async with timeout(delay):
                 await cancel.wait()
             return
-        except TimeoutError:
-            pass
 
         async with self._lock:
             entry = self._sessions.get(token)

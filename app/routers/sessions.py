@@ -75,7 +75,7 @@ async def create_session(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     return SessionCreateResponse(
-        url=f"http://{settings.public_host}:{settings.app_port}/view/{session.token}",
+        url=f"{settings.public_url}/view/{session.token}",
         password=session.password,
     )
 
@@ -97,9 +97,10 @@ async def upload_to_session(
     manager: SessionManager = request.app.state.manager
 
     session = manager.get(token)
-    if session is None:
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if not x_mayfly_password or not compare_digest(x_mayfly_password, session.password):
+        logger.warning("Invalid session password")
         raise HTTPException(status_code=401, detail="Invalid session password")
 
     raw_name = file.filename or ""
@@ -173,8 +174,6 @@ async def session_lifecycle(
     arm_disconnect_timeout = True
 
     try:
-        logger.info(f"Lifecycle WS connected: {token}")
-
         session = manager.get(token)
         if session is None:
             arm_disconnect_timeout = False
@@ -216,15 +215,12 @@ async def session_lifecycle(
         except* _SessionClosedByManager:
             pass
         except* WebSocketDisconnect:
-            logger.info(f"Lifecycle WS disconnected: {token}")
+            pass
 
         if closed_by_manager:
             await websocket.close(code=1001, reason="session closed")
     except Exception:
         logger.exception(f"Lifecycle WS error: {token}")
     finally:
-        if closed_by_manager:
-            logger.info(f"Lifecycle WS closed by manager: {token}")
-        elif arm_disconnect_timeout:
-            logger.info(f"Lifecycle WS closed: {token} — starting disconnect timeout")
+        if not closed_by_manager and arm_disconnect_timeout:
             await manager.schedule_disconnect_close(token)

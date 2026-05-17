@@ -61,7 +61,7 @@ All runtime configuration lives in [.env](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
-| `PUBLIC_HOST` | external host or full base URL used in API/MCP session links |
+| `PUBLIC_URL` | external base URL (with scheme) used in API/MCP session links |
 | `APP_PORT`, `APP_BIND_HOST` | FastAPI port and bind address |
 | `TZ` | timezone applied to the app and every sandbox |
 | `MAYFLY_IMAGE` | per-session sandbox image |
@@ -83,11 +83,11 @@ For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_
 - `POST /view` - create a browser session and redirect to `/view/{token}`
 - `GET /view/{token}` - browser view for one session (sets `mayfly_session` cookie)
 - `POST /sessions` - create a session via API, returns `url` and `password`
-- `GET /sessions/status` - active, available, and limit counts
+- `GET /sessions/status` - active, available, limit, and memory usage; pass `?token=<t>` for a single session
 - `POST /sessions/{token}/upload` - password-protected file upload into the workspace
 - `DELETE /sessions/{token}` - stop a session
 - `WS /sessions/{token}/lifecycle` - browser lifecycle channel (drives the disconnect timeout)
-- `/mayfly/...` and any unmatched path - reverse-proxied to the sandbox identified by the `mayfly_session` cookie
+- any unmatched path - reverse-proxied to the sandbox identified by the `mayfly_session` cookie (the browser iframe loads `/mayfly/` by convention)
 - `/docs` - OpenAPI docs
 - `/mcp/` - MCP endpoint
 

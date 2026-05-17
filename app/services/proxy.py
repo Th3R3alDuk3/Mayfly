@@ -1,5 +1,6 @@
 from asyncio import FIRST_COMPLETED, CancelledError, create_task, wait
 from collections.abc import Mapping
+from contextlib import suppress
 from logging import getLogger
 from typing import Final
 
@@ -37,12 +38,13 @@ _WS_DROP: Final[frozenset[str]] = _HOP_BY_HOP | frozenset({
 
 
 def _forward_headers(headers: Mapping[str, str], drop: frozenset[str]) -> dict[str, str]:
-    return {k: v for k, v in headers.items() if k.lower() not in drop}
+    # Strip hop-by-hop and protocol-specific headers a proxy must not forward.
+    return {key: value for key, value in headers.items() if key.lower() not in drop}
 
 
-def _build_target(base_url: str, path: str, query: str) -> str:
-    target = base_url.rstrip("/") + "/" + path.lstrip("/")
-    return f"{target}?{query}" if query else target
+def _join_url(base_url: str, path: str, query: str) -> str:
+    url = base_url.rstrip("/") + "/" + path.lstrip("/")
+    return f"{url}?{query}" if query else url
 
 
 async def proxy_http(
@@ -52,21 +54,21 @@ async def proxy_http(
     path: str,
     client: AsyncClient,
 ) -> Response:
-    target = _build_target(base_url, path, request.url.query)
     upstream_request = client.build_request(
         method=request.method,
-        url=target,
+        url=_join_url(base_url, path, request.url.query),
         headers=_forward_headers(request.headers, _HOP_BY_HOP),
         content=request.stream(),
     )
+
     try:
         upstream = await client.send(upstream_request, stream=True)
     except RequestError as error:
-        logger.warning(f"Proxy upstream error for {target}: {error}")
+        logger.warning(f"Proxy upstream error: {error}")
         return Response(status_code=502, content=b"Bad gateway")
 
     return StreamingResponse(
-        upstream.aiter_raw(),
+        content=upstream.aiter_raw(),
         status_code=upstream.status_code,
         headers=_forward_headers(upstream.headers, _HOP_BY_HOP),
         background=BackgroundTask(upstream.aclose),
@@ -79,26 +81,23 @@ async def proxy_websocket(
     base_url: str,
     path: str,
 ) -> None:
-    ws_url = _build_target(base_url, path, websocket.url.query)
-    ws_url = ws_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+    upstream_url = _join_url(base_url, path, websocket.url.query)
+    ws_url = upstream_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
 
     requested = websocket.headers.get("sec-websocket-protocol", "")
     subprotocols = [p.strip() for p in requested.split(",") if p.strip()] or None
 
     try:
-        async with ws_connect(
-            ws_url,
-            additional_headers=_forward_headers(websocket.headers, _WS_DROP),
-            subprotocols=subprotocols,
-            max_size=None,
-            open_timeout=10,
-        ) as upstream:
-            await websocket.accept(subprotocol=upstream.subprotocol)
-            await _pipe(websocket, upstream)
-    except InvalidStatus as error:
-        logger.info(f"WebSocket upstream rejected {ws_url}: HTTP {error.response.status_code}")
-    except (WebSocketException, WebSocketDisconnect):
-        pass
+        with suppress(InvalidStatus, WebSocketException, WebSocketDisconnect):
+            async with ws_connect(
+                uri=ws_url,
+                additional_headers=_forward_headers(websocket.headers, _WS_DROP),
+                subprotocols=subprotocols,
+                max_size=None,
+                open_timeout=10,
+            ) as upstream:
+                await websocket.accept(subprotocol=upstream.subprotocol)
+                await _pipe(websocket, upstream)
     except Exception:
         logger.exception(f"WebSocket proxy error for {ws_url}")
     finally:
@@ -108,7 +107,7 @@ async def proxy_websocket(
 
 async def _pipe(client_ws: WebSocket, upstream_ws: ClientConnection) -> None:
     async def to_upstream() -> None:
-        try:
+        with suppress(WebSocketDisconnect, ConnectionClosed):
             while True:
                 message = await client_ws.receive()
                 if message["type"] == "websocket.disconnect":
@@ -117,25 +116,19 @@ async def _pipe(client_ws: WebSocket, upstream_ws: ClientConnection) -> None:
                 payload = message.get("bytes") or message.get("text")
                 if payload is not None:
                     await upstream_ws.send(payload)
-        except (WebSocketDisconnect, ConnectionClosed):
-            pass
 
     async def to_client() -> None:
-        try:
+        with suppress(ConnectionClosed):
             async for frame in upstream_ws:
                 if isinstance(frame, bytes):
                     await client_ws.send_bytes(frame)
                 else:
                     await client_ws.send_text(frame)
-        except ConnectionClosed:
-            pass
 
     tasks = {create_task(to_upstream()), create_task(to_client())}
     _, pending = await wait(tasks, return_when=FIRST_COMPLETED)
     for task in pending:
         task.cancel()
     for task in pending:
-        try:
+        with suppress(CancelledError):
             await task
-        except CancelledError:
-            pass

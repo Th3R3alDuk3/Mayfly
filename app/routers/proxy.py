@@ -7,24 +7,26 @@ from app.services.sandbox import sandbox_base_url
 from app.services.session import SessionManager
 
 SESSION_COOKIE = "mayfly_session"
-ENTRY_PATH = "/mayfly/"
 
 router = APIRouter()
 
-_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
-
-@router.api_route(ENTRY_PATH + "{path:path}", methods=_HTTP_METHODS, include_in_schema=False)
-@router.api_route("/{path:path}", methods=_HTTP_METHODS, include_in_schema=False)
+@router.api_route(
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    include_in_schema=False,
+)
 async def http(
     path: str,
     request: Request,
     mayfly_session: str | None = Cookie(default=None),
 ) -> Response:
     manager: SessionManager = request.app.state.manager
-    session = manager.get(mayfly_session) if mayfly_session else None
-    if session is None or session.state != SessionState.READY:
+
+    session = manager.get(mayfly_session)
+    if not session or session.state != SessionState.READY:
         raise HTTPException(status_code=404, detail="Session not ready")
+
     return await proxy_http(
         request,
         base_url=sandbox_base_url(mayfly_session),
@@ -40,10 +42,12 @@ async def ws(
     mayfly_session: str | None = Cookie(default=None),
 ) -> None:
     manager: SessionManager = websocket.app.state.manager
-    session = manager.get(mayfly_session) if mayfly_session else None
-    if session is None or session.state != SessionState.READY:
+
+    session = manager.get(mayfly_session)
+    if not session or session.state != SessionState.READY:
         await websocket.close(code=4404)
         return
+
     await proxy_websocket(
         websocket,
         base_url=sandbox_base_url(mayfly_session),
