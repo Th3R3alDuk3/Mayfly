@@ -1,0 +1,55 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["/etc/mayfly/AGENTS.md"],
+  "enabled_providers": ["Mayfly"],
+  "provider": {
+    "Mayfly": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Mayfly",
+      "options": {
+        "baseURL": "http://host.microsandbox.internal:11434/v1",
+        "apiKey": "whatever",
+        "timeout": 1800000,
+        "headerTimeout": 600000,
+        "chunkTimeout": 600000
+      },
+      "models": {
+        "gemma4:26b": {
+          "tool_call": true,
+          "limit": {
+            "context": 65536,
+            "output": 32768
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "think": {
+              "reasoningEffort": "high"
+            },
+            "fast": {
+              "reasoningEffort": "low"
+            }
+          }
+        }
+      }
+    }
+  },
+  "model": "Mayfly/gemma4:26b",
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "bash": "allow",
+    "task": "allow",
+    "skill": "allow",
+    "lsp": "allow",
+    "question": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "doom_loop": "ask"
+  }
+}

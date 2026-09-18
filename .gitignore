@@ -1,9 +1,6 @@
 .env
 .venv/
 __pycache__/
-*.pyc
 .ruff_cache/
-.idea/
-.vscode/
-.codex
-.agents/
+.claude/
+config/opencode.json

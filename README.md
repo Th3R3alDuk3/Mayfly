@@ -1,111 +1,126 @@
 <div align="center">
-  <img src="app/static/logo.png" alt="Mayfly" width="180"/>
+  <img src="logo.png" alt="Mayfly" width="180"/>
   <h1>Mayfly</h1>
-  <p><em>Disposable, browser-based coding sessions in isolated Docker sandboxes.</em></p>
+  <p><em>Disposable OpenChamber coding sessions in microVMs.</em></p>
   <p>
-    <img src="https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white" alt="">
-    <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white" alt="">
-    <img src="https://img.shields.io/badge/Docker-required-2496ED?logo=docker&logoColor=white" alt="">
-    <img src="https://img.shields.io/badge/status-alpha-E48400" alt="">
+    <a href="https://github.com/Th3R3alDuk3/Mayfly/actions/workflows/docker.yml"><img src="https://github.com/Th3R3alDuk3/Mayfly/actions/workflows/docker.yml/badge.svg" alt="Docker"></a>
+    <a href="https://github.com/Th3R3alDuk3/Mayfly/tags"><img src="https://img.shields.io/github/v/tag/Th3R3alDuk3/Mayfly?label=version" alt="Version"></a>
+    <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.13%2B-blue" alt="Python"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Th3R3alDuk3/Mayfly" alt="License"></a>
   </p>
 </div>
 
-Mayfly starts short-lived OpenChamber workspaces backed by OpenCode. Each browser session gets its own Docker sandbox, its own workspace, and its own OpenChamber UI password.
-
-The sandboxes are intentionally disposable: no local editor setup, no persistent sandbox state, and automatic cleanup after disconnect.
+Every session boots its own microVM running [OpenChamber](https://github.com/openchamber/openchamber)
+on [OpenCode](https://github.com/anomalyco/opencode), hands out a link and a password, and destroys
+the VM once the browser tab is closed. Built on [microsandbox](https://github.com/superradcompany/microsandbox).
 
 ## 🛠️ How It Works
 
 ```mermaid
 flowchart LR
-  B([Browser]) -- HTTP + WS --> A[FastAPI app]
-  A -- reverse proxy --> M[[Mayfly sandbox<br/>OpenCode + OpenChamber]]
-  A -- Docker API --> M
+  B([Browser]) -- HTTP + WS --> A[Mayfly]
+  M([MCP client]) -- /mcp --> A
+  A -- reverse proxy --> V[[microVM<br/>OpenChamber + OpenCode]]
+  A -- microsandbox SDK --> V
 ```
 
-- The FastAPI app creates and tracks sessions.
-- Each session starts one sandbox container on the shared `mayfly-net` Docker network — sandboxes have **no host port mapping**.
-- The browser visits `/view/{token}`, gets a session cookie, and loads OpenChamber via a same-origin reverse proxy at `/mayfly/`.
-- The reverse proxy is a small in-house module ([`app/services/proxy.py`](app/services/proxy.py), HTTP via `httpx` + WS via `websockets`) — no third-party proxy dependency.
-- A lifecycle WebSocket (`/sessions/{token}/lifecycle`) signals tab close so the sandbox is torn down after a short delay.
-- `$HOME` and `/tmp` inside the sandbox are tmpfs mounts, so every new session starts clean.
-- `docker/entrypoint.sh` generates OpenCode config, OpenChamber settings, the workspace directory, and a small `AGENTS.md`.
+- `GET /` returns this browser's session as JSON, starting one if none is open. `POST /sessions` and the
+  `create_mayfly_session` MCP tool always start a new one. All return `url` and `password`.
+- Opening the link sets a session cookie and serves OpenChamber; from then on the origin is reverse-proxied into the VM.
+- OpenChamber asks for the password. Its file tree accepts drag-and-drop uploads, so files go straight into the workspace.
+- A session with no open browser connection for `SANDBOX_IDLE_TIMEOUT` seconds is destroyed; `SANDBOX_MAX_DURATION` caps its lifetime.
 
-## 📋 Requirements
+## 🚀 Setup
 
-- Docker with access to `/var/run/docker.sock`
-- Python 3.13+ for local development
-- An OpenAI-compatible model endpoint reachable from the sandbox, for example Ollama, vLLM, llama.cpp, or LM Studio
+Requires a Linux host with **KVM** and [uv](https://docs.astral.sh/uv/). The
+server's user must be able to read and write `/dev/kvm`; `uv run msb doctor`
+checks that.
 
-For model services running on the Docker host, use `host.docker.internal` in `.env`.
-
-## 🚀 Quick Start
+Turn nested virtualization off on the host (`kvm_amd` on AMD). With it on,
+sessions get a working `/dev/kvm` inside their microVM and reach the host's
+nested-virtualization code:
 
 ```bash
-cp .env.example .env
-docker compose --profile build build
+echo "options kvm_intel nested=0" | sudo tee /etc/modprobe.d/kvm-nested.conf
+sudo modprobe -r kvm_intel && sudo modprobe kvm_intel
+```
+
+1. Install and configure:
+
+   ```bash
+   uv sync
+   cp .env.example .env
+   cp config/opencode.example.json config/opencode.json
+   ```
+
+   - `PUBLIC_URL`: URL clients reach this server at; used in session links.
+   - `SANDBOX_ALLOW`: everything a sandbox may reach. `host:PORT` is a service on this
+     machine (`host.microsandbox.internal` inside the VM), anything else `DOMAIN[:PORT]`.
+     Keep the model endpoint and the Python package index in it; the rest of the network is denied.
+   - [config/opencode.json](config/opencode.example.json): the [OpenCode config](https://opencode.ai/docs/config/)
+     every session starts with. Edit it any time; the next session picks it up.
+     `config/` is mounted read-only into the VM at `/etc/mayfly`, so `instructions` can reference
+     [config/AGENTS.md](config/AGENTS.md).
+
+2. Build the sandbox image and load it into microsandbox:
+
+   ```bash
+   docker compose --profile build build mayfly
+   docker save mayfly:0.4.0 | uv run msb load
+   ```
+
+   Or pull the prebuilt one: `uv run msb pull ghcr.io/th3r3alduk3/mayfly:latest` and set `SANDBOX_IMAGE` accordingly.
+
+3. Start the server. Open <http://localhost:8123> for a session, or connect an MCP client to `http://localhost:8123/mcp`:
+
+   ```bash
+   uv run python main.py
+   ```
+
+Neither endpoint has authentication; put Mayfly behind trusted network controls.
+
+## 📦 Sandbox image
+
+[docker/Dockerfile.mayfly](docker/Dockerfile.mayfly) starts from `python:3.13-slim` and adds
+git, ripgrep, fd, uv, ruff, basedpyright, OpenCode and OpenChamber. Node is installed from PyPI
+(`nodejs-wheel-binaries`) and only runs OpenChamber, so the build needs nothing but a PyPI and an
+npm registry. Both, the pinned tool versions and the index the sandbox's `pip`/`uv` use, come from
+`.env`:
+
+```bash
+PIP_INDEX_URL=https://nexus.example.com/repository/pypi/simple
+PIP_TRUSTED_HOST=nexus.example.com
+NPM_REGISTRY=https://nexus.example.com/repository/npm/
+```
+
+## 🐳 Docker
+
+The server runs in a container with the same `.env`. It needs the KVM device, a volume so loaded
+images survive restarts, and the config directory:
+
+```bash
 docker compose up -d
+docker save mayfly:0.4.0 | docker compose exec -T app uv run --no-sync msb load
 ```
 
-Open <http://localhost:8123>.
+A prebuilt server image is available as `ghcr.io/th3r3alduk3/mayfly-app:latest`.
 
-When changing files under `docker/`, rebuild the sandbox image before starting new sessions:
+## 🛡️ Security
 
-```bash
-docker compose --profile build build mayfly
-```
-
-## ⚙️ Configuration
-
-All runtime configuration lives in [.env](.env.example).
-
-| Variable | Purpose |
-| --- | --- |
-| `PUBLIC_URL` | external base URL (with scheme) used in API/MCP session links |
-| `APP_PORT`, `APP_BIND_HOST` | FastAPI port and bind address |
-| `TZ` | timezone applied to the app and every sandbox |
-| `MAYFLY_IMAGE` | per-session sandbox image |
-| `MAYFLY_MAX_SESSIONS` | max concurrent sessions |
-| `MAYFLY_MEMORY`, `MAYFLY_CPUS` | per-sandbox resource limits |
-| `MAYFLY_HOME_SIZE`, `MAYFLY_TMP_SIZE` | sandbox `$HOME` and `/tmp` tmpfs sizes |
-| `MAYFLY_WORKSPACE_DIR` | workspace directory inside the sandbox home |
-| `MAYFLY_UPLOAD_LIMIT` | max upload size into the workspace |
-| `MAYFLY_CONNECT_TIMEOUT`, `MAYFLY_DISCONNECT_TIMEOUT` | cleanup timing for unused sessions |
-| `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` | model endpoint passed to OpenCode |
-| `OPENAI_CONTEXT_TOKENS`, `OPENAI_OUTPUT_TOKENS` | model limits passed to OpenCode |
-| `OPENAI_TIMEOUT`, `OPENAI_CHUNK_TIMEOUT` | OpenCode provider request timeouts |
-
-For offline or Nexus builds, override `PIP_INDEX_URL`, `PIP_TRUSTED_HOST`, `NPM_REGISTRY`, and `NPM_STRICT_SSL`.
-
-## 🔌 API Surface
-
-- `GET /` - browser entrypoint
-- `POST /view` - create a browser session and redirect to `/view/{token}`
-- `GET /view/{token}` - browser view for one session (sets `mayfly_session` cookie)
-- `POST /sessions` - create a session via API, returns `url` and `password`
-- `GET /sessions/status` - active, available, limit, and total memory usage across all sessions
-- `GET /sessions/{token}/status` - same shape, but memory usage scoped to a single session
-- `POST /sessions/{token}/upload` - password-protected file upload into the workspace
-- `DELETE /sessions/{token}` - stop a session
-- `WS /sessions/{token}/lifecycle` - browser lifecycle channel (drives the disconnect timeout)
-- any unmatched path - reverse-proxied to the sandbox identified by the `mayfly_session` cookie (the browser iframe loads `/mayfly/` by convention)
-- `/docs` - OpenAPI docs
-- `/mcp/` - MCP endpoint
-
-Static UI assets are served under `/static/*`; `/favicon.ico` serves the Mayfly logo.
-
-The cookie-routed proxy means **one active OpenChamber session per browser origin**. Opening a second tab on the same origin overwrites the cookie and points API/WS traffic at the new session. The first tab detects this via a `BroadcastChannel('mayfly-session')` claim, hides its iframe, and closes its lifecycle WebSocket — that triggers the regular disconnect cleanup for the displaced container.
-
-## 🛡️ Security Model
-
-Sandbox containers run as an unprivileged user with a read-only root filesystem, dropped Linux capabilities, `no-new-privileges`, PID/memory/CPU limits, and tmpfs mounts for writable runtime state. Sandboxes have no host port mapping — they are only reachable through the app's reverse proxy.
-
-Mayfly is still alpha. If you bind the app to a public interface, put it behind trusted network controls.
+- **Isolation:** every session is its own microVM with its own kernel (KVM via libkrun) and the
+  restricted in-guest security profile, fixed RAM/vCPU caps and a disposable disk.
+- **Network:** denied by default; only `SANDBOX_ALLOW` destinations and DNS are reachable.
+  No VM can see another one or the host beyond the listed ports.
+- **Access:** a session is reachable only through its unguessable link, then guarded by
+  OpenChamber's password. The VM's port is bound to the server's loopback.
+- **Host access:** the server needs `/dev/kvm` only.
 
 ## 🧩 Layout
 
-- [`app/`](app/) - FastAPI app, routers, services, templates, and static UI assets
-- [`docker/Dockerfile.app`](docker/Dockerfile.app) - orchestrator image
-- [`docker/Dockerfile.mayfly`](docker/Dockerfile.mayfly) - per-session sandbox image
-- [`docker/entrypoint.sh`](docker/entrypoint.sh) - sandbox startup config for OpenCode, OpenChamber, and workspace instructions
-- [`docker-compose.yml`](docker-compose.yml) - app service, build profile, and shared Docker network
+- [`main.py`](main.py) - FastAPI app, MCP mount, lifespan
+- [`routes.py`](routes.py) - session API, cookie hand-off, reverse proxy
+- [`services/sandbox.py`](services/sandbox.py) - microVM boot and teardown
+- [`services/session.py`](services/session.py) - session registry and idle reaper
+- [`services/proxy.py`](services/proxy.py) - HTTP and WebSocket proxy into the VM
+- [`tools/`](tools/) - MCP tools
+- [`docker/`](docker/) - server and sandbox images

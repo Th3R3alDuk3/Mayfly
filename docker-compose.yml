@@ -9,9 +9,9 @@ services:
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
         NPM_REGISTRY: ${NPM_REGISTRY}
         NPM_STRICT_SSL: ${NPM_STRICT_SSL}
-        OPENCODE_NPM_VERSION: ${OPENCODE_NPM_VERSION}
-        OPENCHAMBER_NPM_VERSION: ${OPENCHAMBER_NPM_VERSION}
-    image: ${MAYFLY_IMAGE}
+        OPENCODE_VERSION: ${OPENCODE_VERSION}
+        OPENCHAMBER_VERSION: ${OPENCHAMBER_VERSION}
+    image: ${SANDBOX_IMAGE}
 
   app:
     build:
@@ -20,19 +20,16 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL}
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
-        APP_PORT: ${APP_PORT}
-    image: app:0.3.0
+    image: mayfly-app:0.4.0
     restart: unless-stopped
     env_file: .env
     ports:
-      - "${APP_BIND_HOST}:${APP_PORT}:${APP_PORT}"
+      - "127.0.0.1:8123:8123"
+    devices:
+      - /dev/kvm
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - mayfly-net
+      - mayfly-data:/root/.microsandbox
+      - ./config:/app/config:ro
 
-networks:
-  mayfly-net:
-    name: mayfly-net
+volumes:
+  mayfly-data:

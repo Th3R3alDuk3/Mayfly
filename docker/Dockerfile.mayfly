@@ -1,40 +1,68 @@
-FROM node:25-bookworm
+# syntax=docker/dockerfile:1
+FROM python:3.13-slim-trixie
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates build-essential \
-        git ripgrep fd-find \
-        python3 python3-pip python3-venv \
-        libnode-dev tzdata \
-    && rm -rf /var/lib/apt/lists/*
-
-ARG PIP_INDEX_URL
-ARG PIP_TRUSTED_HOST
-ARG NPM_REGISTRY
-ARG NPM_STRICT_SSL
-ARG OPENCODE_NPM_VERSION
-ARG OPENCHAMBER_NPM_VERSION
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ARG NPM_STRICT_SSL=true
+ARG NODE_VERSION=24.19.0
+ARG OPENCODE_VERSION=1.18.31
+ARG OPENCHAMBER_VERSION=1.24.1
 
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
+    UV_INDEX_URL=${PIP_INDEX_URL} \
+    UV_INSECURE_HOST=${PIP_TRUSTED_HOST} \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
-    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
+    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL} \
+    NPM_CONFIG_PREFIX=/usr/local
 
-RUN pip install --no-cache-dir --break-system-packages uv ruff basedpyright
+# POSIX locale breaks multibyte input in the built-in terminal.
+ENV LANG=C.UTF-8 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates git ripgrep fd-find \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node comes from PyPI so only the PyPI and npm mirrors are needed to build.
+RUN pip install --no-cache-dir uv ruff basedpyright nodejs-wheel-binaries==${NODE_VERSION} \
+    && ln -s ../lib/python3.13/site-packages/nodejs_wheel/bin/node /usr/local/bin/node \
+    && ln -s ../lib/python3.13/site-packages/nodejs_wheel/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+
 RUN npm install --ignore-scripts -g \
-        opencode-ai@${OPENCODE_NPM_VERSION} \
-        @openchamber/web@${OPENCHAMBER_NPM_VERSION} \
-    && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs
+        opencode-ai@${OPENCODE_VERSION} \
+        @openchamber/web@${OPENCHAMBER_VERSION} \
+    && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs \
+    && npm cache clean --force
 
-RUN userdel -r node 2>/dev/null || true \
-    && useradd -u 1000 -m -s /bin/bash user
-
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
+RUN useradd -u 1000 -m -s /bin/bash user
 USER user
-WORKDIR /home/user
+WORKDIR /home/user/workspace
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# OpenCode installs this on first start; offline that stalls for minutes.
+RUN cd ~/.config/opencode 2>/dev/null || mkdir -p ~/.config/opencode && cd ~/.config/opencode \
+    && npm install --ignore-scripts --no-audit --no-fund --save-exact @opencode-ai/plugin@${OPENCODE_VERSION} \
+    && npm cache clean --force
+
+COPY --chown=user:user <<EOF /home/user/.config/openchamber/settings.json
+{
+  "projects": [{"id": "workspace", "path": "/home/user/workspace", "label": "Workspace"}],
+  "activeProjectId": "workspace",
+  "lastDirectory": "/home/user/workspace",
+  "homeDirectory": "/home/user/workspace"
+}
+EOF
+
+ENV OPENCODE_CONFIG=/etc/mayfly/opencode.json \
+    OPENCODE_DISABLE_AUTOUPDATE=1 \
+    OPENCODE_DISABLE_SHARE=1 \
+    OPENCODE_DISABLE_LSP_DOWNLOAD=1 \
+    OPENCODE_DISABLE_MODELS_FETCH=1 \
+    OPENCHAMBER_HOST=0.0.0.0
+
+EXPOSE 4096
+
+CMD ["openchamber", "--foreground", "--port", "4096"]
