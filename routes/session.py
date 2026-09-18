@@ -1,12 +1,13 @@
 from logging import getLogger
 from pathlib import PurePosixPath
+from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, WebSocket
 
 from config import get_settings
 from models.session import Session
+from routes._proxy import proxy_http, proxy_websocket
 from services import session
-from services.proxy import proxy_http, proxy_websocket
 from services.session import Entry
 
 _settings = get_settings()
@@ -31,13 +32,13 @@ router = APIRouter()
     operation_id="get_mayfly_session",
     description="Returns this browser's session, starting one if none is open.",
 )
-async def index(
+async def get_session(
     response: Response,
-    mayfly_session: str | None = Cookie(default=None),
+    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
 ) -> Session:
 
-    if mayfly_session and (entry := session.get(mayfly_session)) is not None:
-        return Session(url=session.url(mayfly_session), password=entry.password)
+    if token and (entry := session.get(token)) is not None:
+        return Session(url=session.url(token), password=entry.password)
 
     token, password = await _create()
     response.set_cookie(key=COOKIE, value=token, path="/", httponly=True, samesite="lax")
@@ -71,7 +72,7 @@ async def open_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # OpenChamber serves its app for any path; from here on the cookie routes the origin root into the VM.
-    response = await _proxy(request, entry, "")
+    response = await _proxied(request, entry, "")
     response.set_cookie(key=COOKIE, value=token, path="/", httponly=True, samesite="lax")
 
     return response
@@ -82,13 +83,13 @@ async def open_session(
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     include_in_schema=False,
 )
-async def http(
+async def catch_all(
     path: str,
     request: Request,
-    mayfly_session: str | None = Cookie(default=None),
+    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
 ) -> Response:
 
-    if (entry := session.get(mayfly_session)) is None:
+    if (entry := session.get(token)) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     if (
@@ -101,25 +102,24 @@ async def http(
             detail=f"Allowed file types: {', '.join(sorted(UPLOAD_EXTENSIONS))}",
         )
 
-    return await _proxy(request, entry, path)
+    return await _proxied(request, entry, path)
 
 
 @router.websocket(
     path="/{path:path}",
 )
-async def websocket(
-    path: str,
+async def catch_all_websocket(
     websocket: WebSocket,
-    mayfly_session: str | None = Cookie(default=None),
+    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
 ) -> None:
 
-    if (entry := session.get(mayfly_session)) is None:
+    if (entry := session.get(token)) is None:
         await websocket.close(code=4404)
         return
 
     session.connect(entry)
     try:
-        await proxy_websocket(websocket, entry.machine.port, path)
+        await proxy_websocket(websocket, entry.machine.port)
     finally:
         session.disconnect(entry)
 
@@ -138,7 +138,7 @@ async def _create() -> tuple[str, str]:
         ) from error
 
 
-async def _proxy(
+async def _proxied(
     request: Request,
     entry: Entry,
     path: str,

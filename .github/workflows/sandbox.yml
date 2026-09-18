@@ -1,6 +1,6 @@
 name: Sandbox image
 
-# The sandbox image changes rarely and is ~1.1 GB, so it is not rebuilt on
+# The sandbox image changes rarely and is ~1.3 GB, so it is not rebuilt on
 # every push: only when its Dockerfile changes, on demand, and monthly to pick
 # up base image and package security updates (OpenCode and OpenChamber are pinned in the Dockerfile).
 on:

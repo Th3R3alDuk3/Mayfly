@@ -4,10 +4,10 @@
 .github/
 .claude/
 docker/
-docker-compose.yml
+compose.yaml
 
 .env
 .venv/
 __pycache__/
 .ruff_cache/
-config/
+sandbox/

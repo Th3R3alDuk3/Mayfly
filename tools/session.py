@@ -18,11 +18,8 @@ async def create_session() -> Session:
 
     try:
         token, password = await session.create()
+    # Anything else is logged and masked by FastMCP.
     except RuntimeError as error:
         raise ToolError(str(error)) from error
-    except Exception as error:
-        raise ToolError(
-            "Could not start the sandbox. Try again later."
-        ) from error
 
     return Session(url=session.url(token), password=password)

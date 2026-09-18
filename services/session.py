@@ -95,7 +95,7 @@ async def close(
 
 async def close_all() -> None:
 
-    await gather(*(close(token) for token in list(_entries)))
+    await gather(*(close(token) for token in list(_entries)), return_exceptions=True)
 
 
 async def reap() -> None:
@@ -108,4 +108,8 @@ async def reap() -> None:
             idle = entry.connections == 0 and now - entry.idle_since > _settings.sandbox_idle_timeout
             if idle or entry.machine.service.done():
                 logger.info(f"Session {token[:12]} {'idle' if idle else 'died'} — closing")
-                await close(token)
+                try:
+                    await close(token)
+                except Exception:
+                    # The session is dropped either way; a failed teardown must not end the loop.
+                    logger.exception(f"Session {token[:12]} teardown failed")

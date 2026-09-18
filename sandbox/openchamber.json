@@ -1,0 +1,20 @@
+{
+  "projects": [{
+    "id": "workspace", 
+    "path": "/home/user/workspace", 
+    "label": "Workspace"
+  }],
+  "activeProjectId": "workspace",
+  "lastDirectory": "/home/user/workspace",
+  "homeDirectory": "/home/user/workspace",
+  "agentWebToolEnabled": false,
+  "agentControlToolEnabled": false,
+  "agentMemoryToolEnabled": false,
+  "skillCatalogs": [],
+  "dictationEnabled": false,
+  "reportUsage": false,
+  "showOpenCodeUpdateNotifications": false,
+  "sessionGoalEnabled": false,
+  "sessionRecapEnabled": false,
+  "sessionSuggestionEnabled": false
+}

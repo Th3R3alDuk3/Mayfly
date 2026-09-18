@@ -15,6 +15,7 @@ from microsandbox import (
     Protocol,
     Rule,
     Sandbox,
+    SandboxNotFoundError,
     SecurityProfile,
     Volume,
 )
@@ -25,8 +26,10 @@ _settings = get_settings()
 
 logger = getLogger(__name__)
 
-GUEST_PORT = 4096
-CONFIG_DIR = "/etc/mayfly"
+SANDBOX_PORT = 4096
+# holds opencode.json and openchamber.json, mounted read-only at SANDBOX_MOUNT
+SANDBOX_DIR = "./sandbox"
+SANDBOX_MOUNT = "/etc/mayfly"
 
 _LABELS = {"mayfly": "sandbox"}
 _READY_TIMEOUT_SECONDS = 90.0
@@ -51,10 +54,10 @@ async def boot(
 
     rules: list[Rule] = []
 
-    for entry in _settings.sandbox_allow.split(","):
-        if not (entry := entry.strip()):
+    for spec in _settings.sandbox_allow.split(","):
+        if not (spec := spec.strip()):
             continue
-        destination, _, allowed_port = entry.partition(":")
+        destination, _, allowed_port = spec.partition(":")
         rules.append(Rule.allow(
             # `*.example.com` covers the subdomains only, so list the domain itself as well.
             destination=Destination.domain_suffix(destination[2:])
@@ -81,8 +84,8 @@ async def boot(
                 "OPENCHAMBER_UI_PASSWORD": password,
                 "OPENCHAMBER_FS_UPLOAD_MAX_BYTES": str(_settings.sandbox_upload_max_bytes),
             },
-            volumes={CONFIG_DIR: Volume.bind(_settings.sandbox_config_dir, readonly=True)},
-            ports=[PortBinding.tcp(port, GUEST_PORT)],
+            volumes={SANDBOX_MOUNT: Volume.bind(SANDBOX_DIR, readonly=True)},
+            ports=[PortBinding.tcp(port, SANDBOX_PORT)],
             network=Network(policy=NetworkPolicy(rules=tuple(rules))),
         )
     except Exception:
@@ -130,7 +133,9 @@ async def destroy(
     machine.service.cancel()
     with suppress(CancelledError):
         await machine.service
-    await machine.sandbox.destroy(force=True)
+    # Its hard lifetime may have run out first, which already removed the VM.
+    with suppress(SandboxNotFoundError):
+        await machine.sandbox.destroy(force=True)
 
 
 async def remove_leftovers() -> None:

@@ -29,7 +29,7 @@ ENV VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:${PATH}
 
 RUN python3 -m venv ${VIRTUAL_ENV} \
-    && pip install --no-cache-dir uv ruff basedpyright
+    && pip install --no-cache-dir uv ruff
 
 RUN npm install --ignore-scripts -g \
         opencode-ai@${OPENCODE_VERSION} \
@@ -37,32 +37,16 @@ RUN npm install --ignore-scripts -g \
     && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs \
     && npm cache clean --force
 
-# The base image ships its own uid 1000.
-RUN userdel -r node && useradd -u 1000 -m -s /bin/bash user
+# The base image ships its own uid 1000; the venv is the agent's, so it owns it.
+RUN userdel -r node && useradd -u 1000 -m -s /bin/bash user \
+    && chown -R user:user ${VIRTUAL_ENV}
 USER user
 WORKDIR /home/user/workspace
 
-# OpenCode installs this on first start; offline that stalls for minutes.
-RUN mkdir -p ~/.config/opencode && cd ~/.config/opencode \
+RUN mkdir -p ~/.config/openchamber ~/.config/opencode && cd ~/.config/opencode \
+    # OpenCode installs this on first start; offline that stalls for minutes.
     && npm install --ignore-scripts --no-audit --no-fund --save-exact @opencode-ai/plugin@${OPENCODE_VERSION} \
     && npm cache clean --force
-
-# The `agent*` keys drop the tools that reach the network or outlive the VM.
-COPY --chown=user:user <<EOF /home/user/.config/openchamber/settings.json
-{
-  "projects": [{"id": "workspace", "path": "/home/user/workspace", "label": "Workspace"}],
-  "activeProjectId": "workspace",
-  "lastDirectory": "/home/user/workspace",
-  "homeDirectory": "/home/user/workspace",
-  "agentWebToolEnabled": false,
-  "agentControlToolEnabled": false,
-  "agentMemoryToolEnabled": false,
-  "skillCatalogs": [],
-  "dictationEnabled": false,
-  "reportUsage": false,
-  "showOpenCodeUpdateNotifications": false
-}
-EOF
 
 ENV OPENCODE_CONFIG=/etc/mayfly/opencode.json \
     OPENCODE_DISABLE_AUTOUPDATE=1 \
@@ -76,4 +60,5 @@ ENV OPENCHAMBER_UPDATE_API_URL=http://127.0.0.1:1/update
 
 EXPOSE 4096
 
-CMD ["openchamber", "--foreground", "--port", "4096"]
+# OpenChamber writes its settings, so the mounted copy is put in place instead of read from there.
+CMD ["sh", "-c", "cp /etc/mayfly/openchamber.json ~/.config/openchamber/settings.json && exec openchamber --foreground --port 4096"]

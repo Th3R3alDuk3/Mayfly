@@ -29,7 +29,7 @@ services:
       - /dev/kvm
     volumes:
       - mayfly-data:/root/.microsandbox
-      - ./config:/app/config:ro
+      - ./sandbox:/app/sandbox:ro
 
 volumes:
   mayfly-data:

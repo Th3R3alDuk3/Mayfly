@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     sandbox_idle_timeout: float
     # seconds; hard lifetime of each microVM
     sandbox_max_duration: float
-    # holds opencode.json; mounted read-only at /etc/mayfly
-    sandbox_config_dir: str
     # comma-separated `host:PORT` for this machine, `DOMAIN[:PORT]` or `*.DOMAIN[:PORT]`; empty = offline
     sandbox_allow: str
     # comma-separated file extensions the browser may upload; empty = any

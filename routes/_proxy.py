@@ -1,8 +1,7 @@
 from asyncio import FIRST_COMPLETED, CancelledError, create_task, wait
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import suppress
 from logging import getLogger
-from typing import Final
 
 from httpx2 import AsyncClient, RequestError
 from starlette.background import BackgroundTask
@@ -14,7 +13,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 logger = getLogger(__name__)
 
-_HOP_BY_HOP: Final[frozenset[str]] = frozenset({
+_HOP_BY_HOP = frozenset({
     "connection",
     "keep-alive",
     "proxy-authenticate",
@@ -27,7 +26,7 @@ _HOP_BY_HOP: Final[frozenset[str]] = frozenset({
     "content-length",
 })
 
-_WS_DROP: Final[frozenset[str]] = _HOP_BY_HOP | frozenset({
+_WS_DROP = _HOP_BY_HOP | frozenset({
     "sec-websocket-key",
     "sec-websocket-version",
     "sec-websocket-extensions",
@@ -36,7 +35,7 @@ _WS_DROP: Final[frozenset[str]] = _HOP_BY_HOP | frozenset({
 })
 
 
-def _forward_headers(
+def _proxy_headers(
     headers: Mapping[str, str],
     drop: frozenset[str],
     scheme: str,
@@ -50,17 +49,6 @@ def _forward_headers(
     return forwarded
 
 
-def _url(
-    port: int,
-    path: str,
-    query: str,
-    scheme: str = "http",
-) -> str:
-
-    url = f"{scheme}://127.0.0.1:{port}/{path.lstrip('/')}"
-    return f"{url}?{query}" if query else url
-
-
 async def proxy_http(
     request: Request,
     port: int,
@@ -71,8 +59,8 @@ async def proxy_http(
 
     upstream_request = client.build_request(
         method=request.method,
-        url=_url(port, path, request.url.query),
-        headers=_forward_headers(request.headers, _HOP_BY_HOP, request.url.scheme),
+        url=str(request.url.replace(scheme="http", hostname="127.0.0.1", port=port, path=f"/{path}")),
+        headers=_proxy_headers(request.headers, _HOP_BY_HOP, request.url.scheme),
         content=request.stream(),
     )
 
@@ -90,8 +78,14 @@ async def proxy_http(
         await upstream.aclose()
         done()
 
+    # The VM may be destroyed mid-stream (lifetime, crash); that is an ending, not an error.
+    async def body() -> AsyncGenerator[bytes]:
+        with suppress(RequestError):
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+
     return StreamingResponse(
-        content=upstream.aiter_raw(),
+        content=body(),
         status_code=upstream.status_code,
         headers={
             key: value for key, value in upstream.headers.items() if key.lower() not in _HOP_BY_HOP
@@ -103,23 +97,18 @@ async def proxy_http(
 async def proxy_websocket(
     websocket: WebSocket,
     port: int,
-    path: str,
 ) -> None:
-
-    requested = websocket.headers.get("sec-websocket-protocol", "")
-    subprotocols = [p.strip() for p in requested.split(",") if p.strip()] or None
 
     try:
         async with ws_connect(
-            uri=_url(port, path, websocket.url.query, scheme="ws"),
-            additional_headers=_forward_headers(
+            uri=str(websocket.url.replace(scheme="ws", hostname="127.0.0.1", port=port)),
+            additional_headers=_proxy_headers(
                 websocket.headers, _WS_DROP, "https" if websocket.url.scheme == "wss" else "http"
             ),
-            subprotocols=subprotocols,  # pyright: ignore[reportArgumentType]
             max_size=None,
             open_timeout=10,
         ) as upstream:
-            await websocket.accept(subprotocol=upstream.subprotocol)
+            await websocket.accept()
 
             async def to_upstream() -> None:
                 with suppress(WebSocketDisconnect, ConnectionClosed):
