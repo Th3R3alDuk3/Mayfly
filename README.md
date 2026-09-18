@@ -55,8 +55,12 @@ sudo modprobe -r kvm_intel && sudo modprobe kvm_intel
 
    - `PUBLIC_URL`: URL clients reach this server at; used in session links.
    - `SANDBOX_ALLOW`: everything a sandbox may reach. `host:PORT` is a service on this
-     machine (`host.microsandbox.internal` inside the VM), anything else `DOMAIN[:PORT]`.
-     Keep the model endpoint and the Python package index in it; the rest of the network is denied.
+     machine (`host.microsandbox.internal` inside the VM), anything else `DOMAIN[:PORT]`
+     or `*.DOMAIN[:PORT]` for its subdomains. Keep the model endpoint and the Python package
+     index in it; the rest of the network is denied. `github.com` needs
+     `*.github.com,*.githubusercontent.com` too, or clone and raw downloads fail.
+   - `SANDBOX_UPLOAD_EXTENSIONS`, `SANDBOX_UPLOAD_MAX_BYTES`: what the browser may drop into
+     the file tree. Mayfly rejects other extensions before the upload reaches the VM.
    - [config/opencode.json](config/opencode.example.json): the [OpenCode config](https://opencode.ai/docs/config/)
      every session starts with. Edit it any time; the next session picks it up.
      `config/` is mounted read-only into the VM at `/etc/mayfly`, so `instructions` can reference
@@ -81,11 +85,10 @@ Neither endpoint has authentication; put Mayfly behind trusted network controls.
 
 ## 📦 Sandbox image
 
-[docker/Dockerfile.mayfly](docker/Dockerfile.mayfly) starts from `python:3.13-slim` and adds
-git, ripgrep, fd, uv, ruff, basedpyright, OpenCode and OpenChamber. Node is installed from PyPI
-(`nodejs-wheel-binaries`) and only runs OpenChamber, so the build needs nothing but a PyPI and an
-npm registry. Both, the pinned tool versions and the index the sandbox's `pip`/`uv` use, come from
-`.env`:
+[docker/Dockerfile.mayfly](docker/Dockerfile.mayfly) starts from `node:24-trixie-slim` and adds
+Debian's Python 3.13, git, ripgrep, fd, curl and, from PyPI, uv, ruff and basedpyright. OpenCode and
+OpenChamber come from npm, so the build needs the Debian, PyPI and npm mirrors and nothing else.
+The pinned tool versions and the index the sandbox's `pip`/`uv` use come from `.env`:
 
 ```bash
 PIP_INDEX_URL=https://nexus.example.com/repository/pypi/simple
@@ -111,6 +114,12 @@ A prebuilt server image is available as `ghcr.io/th3r3alduk3/mayfly-app:latest`.
   restricted in-guest security profile, fixed RAM/vCPU caps and a disposable disk.
 - **Network:** denied by default; only `SANDBOX_ALLOW` destinations and DNS are reachable.
   No VM can see another one or the host beyond the listed ports.
+- **Offline UI:** the image turns off everything in OpenChamber that reaches the internet or
+  outlives the VM — the agent's browser, app-control and memory tools, the skill catalog,
+  dictation, usage reporting and the update check. OpenCode's `webfetch`/`websearch` are denied
+  in [config/opencode.json](config/opencode.example.json), its auto-update, share, LSP download
+  and model fetch by environment. Change a `agent*Enabled` key in the image's
+  `settings.json` to get one back.
 - **Access:** a session is reachable only through its unguessable link, then guarded by
   OpenChamber's password. The VM's port is bound to the server's loopback.
 - **Host access:** the server needs `/dev/kvm` only.

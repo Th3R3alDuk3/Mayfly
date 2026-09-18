@@ -1,11 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-trixie
+FROM node:24-trixie-slim
 
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_TRUSTED_HOST=
 ARG NPM_REGISTRY=https://registry.npmjs.org
 ARG NPM_STRICT_SSL=true
-ARG NODE_VERSION=24.19.0
 ARG OPENCODE_VERSION=1.18.31
 ARG OPENCHAMBER_VERSION=1.24.1
 
@@ -14,23 +13,23 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     UV_INDEX_URL=${PIP_INDEX_URL} \
     UV_INSECURE_HOST=${PIP_TRUSTED_HOST} \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
-    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL} \
-    NPM_CONFIG_PREFIX=/usr/local
+    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
 
 # POSIX locale breaks multibyte input in the built-in terminal.
 ENV LANG=C.UTF-8 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates git ripgrep fd-find \
+        ca-certificates curl git ripgrep fd-find python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Node comes from PyPI so only the PyPI and npm mirrors are needed to build.
-RUN pip install --no-cache-dir uv ruff basedpyright nodejs-wheel-binaries==${NODE_VERSION} \
-    && ln -s ../lib/python3.13/site-packages/nodejs_wheel/bin/node /usr/local/bin/node \
-    && ln -s ../lib/python3.13/site-packages/nodejs_wheel/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+# A venv on PATH keeps a plain `pip install` working; Debian's system Python refuses it.
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:${PATH}
+
+RUN python3 -m venv ${VIRTUAL_ENV} \
+    && pip install --no-cache-dir uv ruff basedpyright
 
 RUN npm install --ignore-scripts -g \
         opencode-ai@${OPENCODE_VERSION} \
@@ -38,21 +37,30 @@ RUN npm install --ignore-scripts -g \
     && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs \
     && npm cache clean --force
 
-RUN useradd -u 1000 -m -s /bin/bash user
+# The base image ships its own uid 1000.
+RUN userdel -r node && useradd -u 1000 -m -s /bin/bash user
 USER user
 WORKDIR /home/user/workspace
 
 # OpenCode installs this on first start; offline that stalls for minutes.
-RUN cd ~/.config/opencode 2>/dev/null || mkdir -p ~/.config/opencode && cd ~/.config/opencode \
+RUN mkdir -p ~/.config/opencode && cd ~/.config/opencode \
     && npm install --ignore-scripts --no-audit --no-fund --save-exact @opencode-ai/plugin@${OPENCODE_VERSION} \
     && npm cache clean --force
 
+# The `agent*` keys drop the tools that reach the network or outlive the VM.
 COPY --chown=user:user <<EOF /home/user/.config/openchamber/settings.json
 {
   "projects": [{"id": "workspace", "path": "/home/user/workspace", "label": "Workspace"}],
   "activeProjectId": "workspace",
   "lastDirectory": "/home/user/workspace",
-  "homeDirectory": "/home/user/workspace"
+  "homeDirectory": "/home/user/workspace",
+  "agentWebToolEnabled": false,
+  "agentControlToolEnabled": false,
+  "agentMemoryToolEnabled": false,
+  "skillCatalogs": [],
+  "dictationEnabled": false,
+  "reportUsage": false,
+  "showOpenCodeUpdateNotifications": false
 }
 EOF
 
@@ -62,6 +70,9 @@ ENV OPENCODE_CONFIG=/etc/mayfly/opencode.json \
     OPENCODE_DISABLE_LSP_DOWNLOAD=1 \
     OPENCODE_DISABLE_MODELS_FETCH=1 \
     OPENCHAMBER_HOST=0.0.0.0
+
+# Fails without a DNS lookup instead of calling home.
+ENV OPENCHAMBER_UPDATE_API_URL=http://127.0.0.1:1/update
 
 EXPOSE 4096
 

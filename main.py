@@ -9,7 +9,7 @@ from fastmcp import FastMCP
 from httpx2 import AsyncClient
 from uvicorn import run
 
-from routes import router
+from routes.session import router
 from services import sandbox, session
 from tools import TOOLS
 

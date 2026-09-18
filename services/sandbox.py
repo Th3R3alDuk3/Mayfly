@@ -6,6 +6,7 @@ from socket import socket
 
 from httpx2 import AsyncClient, HTTPError
 from microsandbox import (
+    Destination,
     ExecEventType,
     ExecHandle,
     Network,
@@ -55,7 +56,10 @@ async def boot(
             continue
         destination, _, allowed_port = entry.partition(":")
         rules.append(Rule.allow(
-            destination=destination,
+            # `*.example.com` covers the subdomains only, so list the domain itself as well.
+            destination=Destination.domain_suffix(destination[2:])
+            if destination.startswith("*.")
+            else destination,
             protocol=Protocol.TCP,
             port=int(allowed_port) if allowed_port else 443,
         ))
@@ -73,7 +77,10 @@ async def boot(
             max_duration=_settings.sandbox_max_duration,
             ephemeral=True,
             labels=_LABELS,
-            env={"OPENCHAMBER_UI_PASSWORD": password},
+            env={
+                "OPENCHAMBER_UI_PASSWORD": password,
+                "OPENCHAMBER_FS_UPLOAD_MAX_BYTES": str(_settings.sandbox_upload_max_bytes),
+            },
             volumes={CONFIG_DIR: Volume.bind(_settings.sandbox_config_dir, readonly=True)},
             ports=[PortBinding.tcp(port, GUEST_PORT)],
             network=Network(policy=NetworkPolicy(rules=tuple(rules))),

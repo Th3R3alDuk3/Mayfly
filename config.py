@@ -25,8 +25,12 @@ class Settings(BaseSettings):
     sandbox_max_duration: float
     # holds opencode.json; mounted read-only at /etc/mayfly
     sandbox_config_dir: str
-    # comma-separated `host:PORT` for this machine or `DOMAIN[:PORT]`; empty = offline
+    # comma-separated `host:PORT` for this machine, `DOMAIN[:PORT]` or `*.DOMAIN[:PORT]`; empty = offline
     sandbox_allow: str
+    # comma-separated file extensions the browser may upload; empty = any
+    sandbox_upload_extensions: str
+    # bytes; largest file the browser may upload
+    sandbox_upload_max_bytes: int
 
 
 @cache

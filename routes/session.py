@@ -1,15 +1,27 @@
 from logging import getLogger
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, WebSocket
 
+from config import get_settings
 from models.session import Session
 from services import session
 from services.proxy import proxy_http, proxy_websocket
 from services.session import Entry
 
+_settings = get_settings()
+
 logger = getLogger(__name__)
 
 COOKIE = "mayfly_session"
+
+UPLOAD_PATH = "api/fs/upload"
+# OpenChamber caps the size but not the type, so the extensions are filtered here.
+UPLOAD_EXTENSIONS = frozenset(
+    f".{extension.strip().lstrip('.').lower()}"
+    for extension in _settings.sandbox_upload_extensions.split(",")
+    if extension.strip()
+)
 
 router = APIRouter()
 
@@ -78,6 +90,16 @@ async def http(
 
     if (entry := session.get(mayfly_session)) is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    if (
+        path == UPLOAD_PATH
+        and UPLOAD_EXTENSIONS
+        and PurePosixPath(request.query_params.get("path", "")).suffix.lower() not in UPLOAD_EXTENSIONS
+    ):
+        raise HTTPException(
+            status_code=415,
+            detail=f"Allowed file types: {', '.join(sorted(UPLOAD_EXTENSIONS))}",
+        )
 
     return await _proxy(request, entry, path)
 
