@@ -16,3 +16,7 @@ dependencies = [
     "uvicorn>=0.53.0",
     "websockets>=17.1",
 ]
+
+[tool.uv]
+allow-insecure-host = []
+index = [{ url = "https://pypi.org/simple", default = true }]

@@ -17,9 +17,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.app
-      args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL}
-        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST}
     image: mayfly-app:0.4.0
     restart: unless-stopped
     env_file: .env
