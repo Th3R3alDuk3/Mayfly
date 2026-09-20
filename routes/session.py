@@ -1,24 +1,28 @@
-from logging import getLogger
 from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, WebSocket
 
 from config import get_settings
-from models.session import Session
+from models.session import SessionLink
 from routes._proxy import proxy_http, proxy_websocket
-from services import session
-from services.session import Entry
+from services.session import (
+    Session,
+    SessionError,
+    connect_session,
+    disconnect_session,
+    get_session,
+    open_session,
+    session_url,
+)
 
 _settings = get_settings()
 
-logger = getLogger(__name__)
+_COOKIE = "mayfly_session"
 
-COOKIE = "mayfly_session"
-
-UPLOAD_PATH = "api/fs/upload"
+_UPLOAD_PATH = "api/fs/upload"
 # OpenChamber caps the size but not the type, so the extensions are filtered here.
-UPLOAD_EXTENSIONS = frozenset(
+_UPLOAD_EXTENSIONS = frozenset(
     f".{extension.strip().lstrip('.').lower()}"
     for extension in _settings.sandbox_upload_extensions.split(",")
     if extension.strip()
@@ -27,23 +31,52 @@ UPLOAD_EXTENSIONS = frozenset(
 router = APIRouter()
 
 
+async def _open() -> Session:
+
+    try:
+        return await open_session()
+    except SessionError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+async def _proxied(
+    request: Request,
+    session: Session,
+    path: str,
+) -> Response:
+
+    connect_session(session)
+
+    return await proxy_http(
+        request,
+        port=session.port,
+        path=path,
+        client=request.app.state.client,
+        done=lambda: disconnect_session(session),
+    )
+
+
 @router.get(
     path="/",
     operation_id="get_mayfly_session",
     description="Returns this browser's session, starting one if none is open.",
 )
-async def get_session(
+async def browser_session(
     response: Response,
-    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
-) -> Session:
+    token: Annotated[str | None, Cookie(alias=_COOKIE)] = None,
+) -> SessionLink:
 
-    if token and (entry := session.get(token)) is not None:
-        return Session(url=session.url(token), password=entry.password)
+    if (session := get_session(token)) is None:
+        session = await _open()
+        response.set_cookie(
+            key=_COOKIE,
+            value=session.token,
+            path="/",
+            httponly=True,
+            samesite="lax",
+        )
 
-    token, password = await _create()
-    response.set_cookie(key=COOKIE, value=token, path="/", httponly=True, samesite="lax")
-
-    return Session(url=session.url(token), password=password)
+    return SessionLink(url=session_url(session.token), password=session.password)
 
 
 @router.post(
@@ -52,28 +85,34 @@ async def get_session(
     operation_id="create_mayfly_session",
     description="Starts a new session and returns its link and password.",
 )
-async def create_session() -> Session:
+async def create_session() -> SessionLink:
 
-    token, password = await _create()
+    session = await _open()
 
-    return Session(url=session.url(token), password=password)
+    return SessionLink(url=session_url(session.token), password=session.password)
 
 
 @router.get(
     path="/s/{token}",
     include_in_schema=False,
 )
-async def open_session(
+async def enter_session(
     token: str,
     request: Request,
 ) -> Response:
 
-    if (entry := session.get(token)) is None:
+    if (session := get_session(token)) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # OpenChamber serves its app for any path; from here on the cookie routes the origin root into the VM.
-    response = await _proxied(request, entry, "")
-    response.set_cookie(key=COOKIE, value=token, path="/", httponly=True, samesite="lax")
+    # Any path serves the app; the cookie now routes the origin root into the sandbox.
+    response = await _proxied(request, session, "")
+    response.set_cookie(
+        key=_COOKIE,
+        value=token,
+        path="/",
+        httponly=True,
+        samesite="lax",
+    )
 
     return response
 
@@ -86,23 +125,21 @@ async def open_session(
 async def catch_all(
     path: str,
     request: Request,
-    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
+    token: Annotated[str | None, Cookie(alias=_COOKIE)] = None,
 ) -> Response:
 
-    if (entry := session.get(token)) is None:
+    if (session := get_session(token)) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if (
-        path == UPLOAD_PATH
-        and UPLOAD_EXTENSIONS
-        and PurePosixPath(request.query_params.get("path", "")).suffix.lower() not in UPLOAD_EXTENSIONS
-    ):
-        raise HTTPException(
-            status_code=415,
-            detail=f"Allowed file types: {', '.join(sorted(UPLOAD_EXTENSIONS))}",
-        )
+    if path == _UPLOAD_PATH and _UPLOAD_EXTENSIONS:
+        suffix = PurePosixPath(request.query_params.get("path", "")).suffix.lower()
+        if suffix not in _UPLOAD_EXTENSIONS:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Allowed file types: {', '.join(sorted(_UPLOAD_EXTENSIONS))}",
+            )
 
-    return await _proxied(request, entry, path)
+    return await _proxied(request, session, path)
 
 
 @router.websocket(
@@ -110,46 +147,15 @@ async def catch_all(
 )
 async def catch_all_websocket(
     websocket: WebSocket,
-    token: Annotated[str | None, Cookie(alias=COOKIE)] = None,
+    token: Annotated[str | None, Cookie(alias=_COOKIE)] = None,
 ) -> None:
 
-    if (entry := session.get(token)) is None:
+    if (session := get_session(token)) is None:
         await websocket.close(code=4404)
         return
 
-    session.connect(entry)
+    connect_session(session)
     try:
-        await proxy_websocket(websocket, entry.machine.port)
+        await proxy_websocket(websocket, session.port)
     finally:
-        session.disconnect(entry)
-
-
-async def _create() -> tuple[str, str]:
-
-    try:
-        return await session.create()
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except Exception as error:
-        logger.exception("Sandbox start failed")
-        raise HTTPException(
-            status_code=503,
-            detail="Could not start the sandbox. Try again later.",
-        ) from error
-
-
-async def _proxied(
-    request: Request,
-    entry: Entry,
-    path: str,
-) -> Response:
-
-    session.connect(entry)
-
-    return await proxy_http(
-        request,
-        port=entry.machine.port,
-        path=path,
-        client=request.app.state.client,
-        done=lambda: session.disconnect(entry),
-    )
+        disconnect_session(session)

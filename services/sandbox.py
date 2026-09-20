@@ -1,9 +1,11 @@
 from asyncio import CancelledError, Task, create_task, sleep, timeout
-from contextlib import suppress
-from dataclasses import dataclass
-from logging import getLogger
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, suppress
+from functools import cache
 from socket import socket
+from urllib.parse import urlsplit
 
+from fastmcp.utilities.logging import get_logger
 from httpx2 import AsyncClient, HTTPError
 from microsandbox import (
     Destination,
@@ -12,63 +14,71 @@ from microsandbox import (
     Network,
     NetworkPolicy,
     PortBinding,
-    Protocol,
     Rule,
     Sandbox,
-    SandboxNotFoundError,
     SecurityProfile,
     Volume,
 )
+from microsandbox.types import DnsConfig
 
 from config import get_settings
 
 _settings = get_settings()
+logger = get_logger(__name__)
 
-logger = getLogger(__name__)
-
-SANDBOX_PORT = 4096
-# holds opencode.json and openchamber.json, mounted read-only at SANDBOX_MOUNT
-SANDBOX_DIR = "./sandbox"
-SANDBOX_MOUNT = "/etc/mayfly"
+_SANDBOX_PORT = 4096
+# mounted read-only into every sandbox
+_SANDBOX_DIR = "./sandbox"
+_SANDBOX_MOUNT = "/etc/mayfly"
 
 _LABELS = {"mayfly": "sandbox"}
 _READY_TIMEOUT_SECONDS = 90.0
 _READY_POLL_SECONDS = 0.5
 
 
-@dataclass
-class Machine:
-    sandbox: Sandbox
-    port: int
-    service: Task[None]
+@cache
+def _network() -> Network:
+
+    specs = _settings.sandbox_allow.replace(",", " ").split()
+
+    # The indexes and PyPI's file host.
+    for url in (_settings.sandbox_index_url, _settings.sandbox_npm_registry):
+        parts = urlsplit(url)
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        specs.append(f"{parts.hostname}:{port}")
+    specs.append("files.pythonhosted.org")
+
+    rules: list[Rule] = []
+
+    for spec in specs:
+        destination, _, port = spec.partition(":")
+        if destination.startswith("*."):
+            destination = Destination.domain_suffix(destination[2:])
+        # A domain rule for the alias does not reach the host.
+        elif destination == "host.microsandbox.internal":
+            destination = "host"
+        rules.append(Rule.allow(
+            destination=destination,
+            port=int(port) if port else 443,
+        ))
+
+    return Network(
+        # Ingress stays open for the published port.
+        policy=NetworkPolicy(rules=tuple(rules)),
+        # Allows a LAN index or model endpoint.
+        dns=DnsConfig(rebind_protection=False),
+    )
 
 
-async def boot(
+@asynccontextmanager
+async def boot_sandbox(
     name: str,
     password: str,
-) -> Machine:
+) -> AsyncGenerator[tuple[int, Task[None]]]:
 
     with socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port: int = probe.getsockname()[1]
-
-    rules: list[Rule] = []
-
-    for spec in _settings.sandbox_allow.split(","):
-        if not (spec := spec.strip()):
-            continue
-        destination, _, allowed_port = spec.partition(":")
-        rules.append(Rule.allow(
-            # `*.example.com` covers the subdomains only, so list the domain itself as well.
-            destination=Destination.domain_suffix(destination[2:])
-            if destination.startswith("*.")
-            else destination,
-            protocol=Protocol.TCP,
-            port=int(allowed_port) if allowed_port else 443,
-        ))
-
-    if rules:
-        rules = [*Rule.allow_dns(), *rules]
 
     try:
         sandbox = await Sandbox.create(
@@ -82,11 +92,19 @@ async def boot(
             labels=_LABELS,
             env={
                 "OPENCHAMBER_UI_PASSWORD": password,
-                "OPENCHAMBER_FS_UPLOAD_MAX_BYTES": str(_settings.sandbox_upload_max_bytes),
+                "OPENCHAMBER_FS_UPLOAD_MAX_BYTES": str(
+                    _settings.sandbox_upload_max_bytes),
+                "PIP_INDEX_URL": _settings.sandbox_index_url,
+                "PIP_TRUSTED_HOST": _settings.sandbox_insecure_host,
+                "UV_DEFAULT_INDEX": _settings.sandbox_index_url,
+                "UV_INSECURE_HOST": _settings.sandbox_insecure_host,
+                "NPM_CONFIG_REGISTRY": _settings.sandbox_npm_registry,
+                "NPM_CONFIG_STRICT_SSL":
+                    "false" if _settings.sandbox_insecure_host else "true",
             },
-            volumes={SANDBOX_MOUNT: Volume.bind(SANDBOX_DIR, readonly=True)},
-            ports=[PortBinding.tcp(port, SANDBOX_PORT)],
-            network=Network(policy=NetworkPolicy(rules=tuple(rules))),
+            volumes={_SANDBOX_MOUNT: Volume.bind(_SANDBOX_DIR, readonly=True)},
+            ports=[PortBinding.tcp(port, _SANDBOX_PORT)],
+            network=_network(),
         )
     except Exception:
         # A failed start leaves a stopped sandbox record behind.
@@ -98,44 +116,36 @@ async def boot(
     async def drain(handle: ExecHandle) -> None:
         async for event in handle:
             if event.event_type == ExecEventType.STDERR:
-                logger.debug(f"[{name}] {(event.data or b'').decode(errors='replace').rstrip()}")
+                logger.debug("sandbox %s: %s", name,
+                    (event.data or b"").decode(errors="replace").rstrip())
             elif event.code is not None:
-                logger.warning(f"Sandbox {name} service exited with {event.code}")
+                logger.warning("sandbox %s: service exited with %d", name, event.code)
 
-    service: Task[None] | None = None
+    # Exiting destroys the sandbox, also after its hard lifetime already removed it.
+    async with sandbox:
 
-    try:
         service = create_task(drain(await sandbox.exec_default_stream()))
 
-        async with (
-            timeout(_READY_TIMEOUT_SECONDS),
-            AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5) as client,
-        ):
-            while True:
-                with suppress(HTTPError, ValueError):
-                    response = await client.get("/health")
-                    if response.status_code == 200 and response.json().get("isOpenCodeReady"):
-                        break
-                await sleep(_READY_POLL_SECONDS)
-    except Exception:
-        if service is not None:
+        try:
+            async with (
+                timeout(_READY_TIMEOUT_SECONDS),
+                AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5) as client,
+            ):
+                while not service.done():
+                    with suppress(HTTPError, ValueError):
+                        response = await client.get("/health")
+                        if response.status_code == 200 \
+                            and response.json().get("isOpenCodeReady"):
+                            break
+                    await sleep(_READY_POLL_SECONDS)
+                else:
+                    raise RuntimeError("service exited before it was ready")
+
+            yield port, service
+        finally:
             service.cancel()
-        await sandbox.destroy(force=True)
-        raise
-
-    return Machine(sandbox, port, service)
-
-
-async def destroy(
-    machine: Machine,
-) -> None:
-
-    machine.service.cancel()
-    with suppress(CancelledError):
-        await machine.service
-    # Its hard lifetime may have run out first, which already removed the VM.
-    with suppress(SandboxNotFoundError):
-        await machine.sandbox.destroy(force=True)
+            with suppress(CancelledError):
+                await service
 
 
 async def remove_leftovers() -> None:
@@ -143,6 +153,6 @@ async def remove_leftovers() -> None:
     page = await Sandbox.list_with(labels=_LABELS)
 
     for handle in page.sandboxes:
-        logger.info(f"Removing leftover sandbox {handle.name}")
+        logger.info("removing leftover sandbox %s", handle.name)
         with suppress(Exception):
             await handle.destroy(force=True)

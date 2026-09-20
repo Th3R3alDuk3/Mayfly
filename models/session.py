@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 
-class Session(BaseModel):
+class SessionLink(BaseModel):
     url: str = Field(
         description="Link to the session; opens OpenChamber in the browser.",
     )

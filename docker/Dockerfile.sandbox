@@ -1,19 +1,12 @@
-# syntax=docker/dockerfile:1
 FROM node:24-trixie-slim
 
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG PIP_TRUSTED_HOST=
-ARG NPM_REGISTRY=https://registry.npmjs.org
-ARG NPM_STRICT_SSL=true
+# Build only; sessions take their indexes from the server's .env.
+ARG PIP_INDEX_URL
+ARG PIP_TRUSTED_HOST
+ARG NPM_CONFIG_REGISTRY
+ARG NPM_CONFIG_STRICT_SSL
 ARG OPENCODE_VERSION=1.18.31
 ARG OPENCHAMBER_VERSION=1.24.1
-
-ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
-    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
-    UV_INDEX_URL=${PIP_INDEX_URL} \
-    UV_INSECURE_HOST=${PIP_TRUSTED_HOST} \
-    NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
-    NPM_CONFIG_STRICT_SSL=${NPM_STRICT_SSL}
 
 # POSIX locale breaks multibyte input in the built-in terminal.
 ENV LANG=C.UTF-8 \

@@ -1,8 +1,8 @@
 from asyncio import FIRST_COMPLETED, CancelledError, create_task, wait
 from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import suppress
-from logging import getLogger
 
+from fastmcp.utilities.logging import get_logger
 from httpx2 import AsyncClient, RequestError
 from starlette.background import BackgroundTask
 from starlette.requests import Request
@@ -11,7 +11,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _HOP_BY_HOP = frozenset({
     "connection",
@@ -41,7 +41,10 @@ def _proxy_headers(
     scheme: str,
 ) -> dict[str, str]:
 
-    forwarded = {key: value for key, value in headers.items() if key.lower() not in drop}
+    forwarded = {
+        key: value for key, value in headers.items() 
+        if key.lower() not in drop
+    }
     # OpenChamber checks the browser's Origin against these.
     forwarded["x-forwarded-host"] = headers.get("host", "")
     forwarded["x-forwarded-proto"] = scheme
@@ -59,7 +62,8 @@ async def proxy_http(
 
     upstream_request = client.build_request(
         method=request.method,
-        url=str(request.url.replace(scheme="http", hostname="127.0.0.1", port=port, path=f"/{path}")),
+        url=str(request.url.replace(
+            scheme="http", hostname="127.0.0.1", port=port, path=f"/{path}")),
         headers=_proxy_headers(request.headers, _HOP_BY_HOP, request.url.scheme),
         content=request.stream(),
     )
@@ -68,7 +72,7 @@ async def proxy_http(
         upstream = await client.send(upstream_request, stream=True)
     except RequestError as error:
         done()
-        logger.warning(f"Proxy upstream error: {error}")
+        logger.warning("proxy: upstream error: %s", error)
         return Response(status_code=502, content=b"Bad gateway")
     except BaseException:
         done()
@@ -78,7 +82,7 @@ async def proxy_http(
         await upstream.aclose()
         done()
 
-    # The VM may be destroyed mid-stream (lifetime, crash); that is an ending, not an error.
+    # A sandbox destroyed mid-stream (lifetime, crash) ends the body; that is no error.
     async def body() -> AsyncGenerator[bytes]:
         with suppress(RequestError):
             async for chunk in upstream.aiter_raw():
@@ -88,7 +92,8 @@ async def proxy_http(
         content=body(),
         status_code=upstream.status_code,
         headers={
-            key: value for key, value in upstream.headers.items() if key.lower() not in _HOP_BY_HOP
+            key: value for key, value in upstream.headers.items()
+            if key.lower() not in _HOP_BY_HOP
         },
         background=BackgroundTask(close),
     )
@@ -101,9 +106,12 @@ async def proxy_websocket(
 
     try:
         async with ws_connect(
-            uri=str(websocket.url.replace(scheme="ws", hostname="127.0.0.1", port=port)),
+            uri=str(websocket.url.replace(
+                scheme="ws", hostname="127.0.0.1", port=port)),
             additional_headers=_proxy_headers(
-                websocket.headers, _WS_DROP, "https" if websocket.url.scheme == "wss" else "http"
+                websocket.headers,
+                _WS_DROP,
+                "https" if websocket.url.scheme == "wss" else "http",
             ),
             max_size=None,
             open_timeout=10,
@@ -139,7 +147,7 @@ async def proxy_websocket(
                     await task
 
     except (WebSocketException, WebSocketDisconnect, OSError) as error:
-        logger.warning(f"WebSocket proxy error: {error}")
+        logger.warning("proxy: websocket error: %s", error)
     finally:
         if websocket.application_state != WebSocketState.DISCONNECTED:
             with suppress(RuntimeError, WebSocketDisconnect):

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     max_concurrent_sandboxes: int
 
     sandbox_image: str
+    # where pip/uv and npm inside a session install from; reachable by themselves
+    sandbox_index_url: str
+    sandbox_npm_registry: str
+    # empty unless an index uses an own certificate; npm then skips certificate checks
+    sandbox_insecure_host: str
     # MiB, whole vCPUs
     sandbox_memory: int
     sandbox_cpus: int
@@ -23,7 +28,8 @@ class Settings(BaseSettings):
     sandbox_idle_timeout: float
     # seconds; hard lifetime of each microVM
     sandbox_max_duration: float
-    # comma-separated `host:PORT` for this machine, `DOMAIN[:PORT]` or `*.DOMAIN[:PORT]`; empty = offline
+    # comma-separated `host:PORT` for this machine, `DOMAIN[:PORT]` or
+    # `*.DOMAIN[:PORT]`, besides the indexes
     sandbox_allow: str
     # comma-separated file extensions the browser may upload; empty = any
     sandbox_upload_extensions: str
