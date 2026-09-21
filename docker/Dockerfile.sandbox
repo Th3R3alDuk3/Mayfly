@@ -12,7 +12,8 @@ ARG OPENCHAMBER_VERSION=1.24.1
 ENV LANG=C.UTF-8 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN apt-get update \
+# Accepts the expired release files of an outdated Debian mirror.
+RUN apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl git ripgrep fd-find python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
@@ -24,7 +25,8 @@ ENV VIRTUAL_ENV=/opt/venv \
 RUN python3 -m venv ${VIRTUAL_ENV} \
     && pip install --no-cache-dir uv ruff
 
-RUN npm install --ignore-scripts -g \
+# OpenChamber's openai@4 wants zod 3 next to its zod 4; the tree is the same without peers.
+RUN npm install --ignore-scripts --legacy-peer-deps -g \
         opencode-ai@${OPENCODE_VERSION} \
         @openchamber/web@${OPENCHAMBER_VERSION} \
     && node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs \
@@ -34,12 +36,15 @@ RUN npm install --ignore-scripts -g \
 RUN userdel -r node && useradd -u 1000 -m -s /bin/bash user \
     && chown -R user:user ${VIRTUAL_ENV}
 USER user
-WORKDIR /home/user/workspace
 
-RUN mkdir -p ~/.config/openchamber ~/.config/opencode && cd ~/.config/opencode \
+# Created here because builders without BuildKit make WORKDIR owned by root.
+RUN mkdir -p ~/workspace ~/.config/openchamber ~/.config/opencode && cd ~/.config/opencode \
     # OpenCode installs this on first start; offline that stalls for minutes.
-    && npm install --ignore-scripts --no-audit --no-fund --save-exact @opencode-ai/plugin@${OPENCODE_VERSION} \
+    && npm install --ignore-scripts --legacy-peer-deps --no-audit --no-fund --save-exact \
+        @opencode-ai/plugin@${OPENCODE_VERSION} \
     && npm cache clean --force
+
+WORKDIR /home/user/workspace
 
 ENV OPENCODE_CONFIG=/etc/mayfly/opencode.json \
     OPENCODE_DISABLE_AUTOUPDATE=1 \

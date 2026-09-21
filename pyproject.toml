@@ -1,6 +1,6 @@
 [project]
 name = "mayfly"
-version = "0.4.0"
+version = "0.4.1"
 description = "Disposable OpenChamber coding sessions in microVMs."
 readme = "README.md"
 license = "MIT"

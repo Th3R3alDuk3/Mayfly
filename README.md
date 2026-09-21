@@ -141,6 +141,11 @@ locked versions and rewrites their URLs in `uv.lock`, and the build installs
 from there. Both files then differ from the repository; keep those changes
 local. The `FROM` images of both Dockerfiles must be reachable as well.
 
+The sandbox build accepts expired release files, so an outdated Debian mirror
+works. It still has to be as new as the sandbox's `FROM` image, including
+`trixie-updates` and `trixie-security`; apt does not downgrade packages the
+image already has.
+
 ### Prebuilt images
 
 CI publishes both images to ghcr.io:
