@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 
 class SessionLink(BaseModel):
     url: str = Field(
-        description="Link to the session; opens OpenChamber in the browser.",
+        description="Opens the workspace in the browser, for the first browser only.",
     )
     password: str = Field(
-        description="Password OpenChamber asks for when the link is opened.",
+        description="Password the workspace asks for once it is open.",
     )

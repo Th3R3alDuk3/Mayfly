@@ -1,11 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["/etc/mayfly/AGENTS.md"],
-  "enabled_providers": ["local"],
-  "provider": {
+  "instructions": ["/etc/opencode/AGENTS.md"],
+  "providers": {
     "local": {
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
         "baseURL": "http://host.microsandbox.internal:8080/v1",
         "apiKey": "changeme",
         "timeout": false,
@@ -14,27 +13,25 @@
       },
       "models": {
         "Deepseek-v4.1-Flash:552b": {
-          "tool_call": true,
-          "modalities": {"input": ["text", "image"], "output": ["text"]},
+          "capabilities": {
+            "tools": true,
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
           "limit": {"context": 65536, "output": 32768}
         }
       }
     }
   },
   "model": "local/Deepseek-v4.1-Flash:552b",
-  "permission": {
-    "read": "allow",
-    "edit": "allow",
-    "glob": "allow",
-    "grep": "allow",
-    "bash": "allow",
-    "task": "allow",
-    "skill": "allow",
-    "lsp": "allow",
-    "question": "allow",
-    "webfetch": "deny",
-    "websearch": "deny",
-    "external_directory": "deny",
-    "doom_loop": "ask"
-  }
+  "policies": [
+    {"action": "provider.use", "resource": "*", "effect": "deny"},
+    {"action": "provider.use", "resource": "local", "effect": "allow"}
+  ],
+  "permissions": [
+    {"action": "webfetch", "resource": "*", "effect": "deny"},
+    {"action": "websearch", "resource": "*", "effect": "deny"},
+    {"action": "experimental_image_generate", "resource": "*", "effect": "deny"},
+    {"action": "external_directory", "resource": "*", "effect": "deny"}
+  ]
 }

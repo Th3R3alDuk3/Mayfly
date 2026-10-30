@@ -1,45 +1,26 @@
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from fastapi_offline import FastAPIOffline
 from fastmcp import FastMCP
-from httpx2 import AsyncClient
+from starlette.applications import Starlette
+from starlette.routing import Mount
 from uvicorn import run
 
-from routes.session import router
+from routes.session import ROUTES
 from services.session import session_lifespan
 from tools import TOOLS
 
-INSTRUCTIONS = "Starts disposable coding sandboxes with a browser UI."
+INSTRUCTIONS = "Starts private coding workspaces the user opens in the browser."
 
 mcp_app = FastMCP(
     name="Mayfly",
     instructions=INSTRUCTIONS,
+    lifespan=session_lifespan,
     tools=TOOLS,
     mask_error_details=True,
 ).http_app(path="/", stateless_http=True)
 
-
-@asynccontextmanager
-async def lifespan(
-    app: FastAPI,
-) -> AsyncGenerator[None]:
-
-    async with (
-        # One connection pool for everything the proxy sends into the VMs.
-        AsyncClient(timeout=None) as app.state.client,
-        session_lifespan(),
-        mcp_app.lifespan(app),
-    ):
-        yield
-
-
-app = FastAPIOffline(title="Mayfly", lifespan=lifespan)
-
-app.mount(path="/mcp", app=mcp_app)
-# Last: its catch-all route proxies everything else into the sandbox.
-app.include_router(router)
+app = Starlette(
+    routes=[Mount("/mcp", app=mcp_app), *ROUTES],
+    lifespan=mcp_app.lifespan,
+)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # base URL clients reach this server at; used in session links
+    # base URL browsers reach this server at; OpenChamber checks origins against it
     public_url: str
 
     max_concurrent_sandboxes: int
@@ -19,8 +19,10 @@ class Settings(BaseSettings):
     # where pip/uv and npm inside a session install from; reachable by themselves
     sandbox_index_url: str
     sandbox_npm_registry: str
-    # empty unless an index uses an own certificate; npm then skips certificate checks
+    # empty unless an index uses an own certificate or plain HTTP
     sandbox_insecure_host: str
+    # IP:port for http and https traffic; empty for none
+    sandbox_proxy: str = ""
     # MiB, whole vCPUs
     sandbox_memory: int
     sandbox_cpus: int
@@ -28,8 +30,7 @@ class Settings(BaseSettings):
     sandbox_idle_timeout: float
     # seconds; hard lifetime of each microVM
     sandbox_max_duration: float
-    # comma-separated `host:PORT` for this machine, `DOMAIN[:PORT]` or
-    # `*.DOMAIN[:PORT]`, besides the indexes
+    # comma-separated DOMAIN, *.DOMAIN or URLs, besides the indexes
     sandbox_allow: str
     # comma-separated file extensions the browser may upload; empty = any
     sandbox_upload_extensions: str

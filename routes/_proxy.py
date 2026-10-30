@@ -1,19 +1,30 @@
-from asyncio import FIRST_COMPLETED, CancelledError, create_task, wait
 from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import suppress
+from urllib.parse import urlsplit
 
+from anyio import create_task_group
 from fastmcp.utilities.logging import get_logger
 from httpx2 import AsyncClient, RequestError
+from httpx2.websockets import HTTPXWSException
 from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
+from starlette.types import Scope
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
-from websockets.asyncio.client import connect as ws_connect
-from websockets.exceptions import ConnectionClosed, WebSocketException
+from wsproto.events import BytesMessage, TextMessage
+
+from config import get_settings
 
 logger = get_logger(__name__)
 
-_HOP_BY_HOP = frozenset({
+SESSION_COOKIE = "mayfly_session"
+
+_PUBLIC_URL = urlsplit(get_settings().public_url)
+_WS_MAX_MESSAGE_BYTES = 2**26
+# The page has hardcoded calls, such as to models.dev, and no setting to stop them.
+_CSP = b"default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:"
+
+_NOT_FORWARDED = frozenset({
     "connection",
     "keep-alive",
     "proxy-authenticate",
@@ -26,50 +37,54 @@ _HOP_BY_HOP = frozenset({
     "content-length",
 })
 
-_WS_DROP = _HOP_BY_HOP | frozenset({
-    "sec-websocket-key",
-    "sec-websocket-version",
-    "sec-websocket-extensions",
-    "sec-websocket-accept",
-    "sec-websocket-protocol",
-})
+
+def _target(
+    scope: Scope,
+) -> bytes:
+
+    # Raw: a decoded %3F would end the path. The slash ends the authority.
+    path = scope["raw_path"].removeprefix(b"/")
+    query = scope["query_string"]
+
+    return b"/%b?%b" % (path, query) if query else b"/%b" % path
 
 
 def _proxy_headers(
     headers: Mapping[str, str],
-    drop: frozenset[str],
-    scheme: str,
 ) -> dict[str, str]:
 
     forwarded = {
-        key: value for key, value in headers.items() 
-        if key.lower() not in drop
+        key: value for key, value in headers.items()
+        if key not in _NOT_FORWARDED and not key.startswith("sec-websocket-")
     }
+    # Code in the sandbox must not learn what grants access to it.
+    forwarded["cookie"] = "; ".join(
+        cookie for cookie in headers.get("cookie", "").split("; ")
+        if not cookie.startswith(f"{SESSION_COOKIE}=")
+    )
     # OpenChamber checks the browser's Origin against these.
-    forwarded["x-forwarded-host"] = headers.get("host", "")
-    forwarded["x-forwarded-proto"] = scheme
+    forwarded["x-forwarded-host"] = _PUBLIC_URL.netloc
+    forwarded["x-forwarded-proto"] = _PUBLIC_URL.scheme
 
     return forwarded
 
 
 async def proxy_http(
     request: Request,
-    port: int,
-    path: str,
     client: AsyncClient,
     done: Callable[[], None],
 ) -> Response:
 
-    upstream_request = client.build_request(
-        method=request.method,
-        url=str(request.url.replace(
-            scheme="http", hostname="127.0.0.1", port=port, path=f"/{path}")),
-        headers=_proxy_headers(request.headers, _HOP_BY_HOP, request.url.scheme),
-        content=request.stream(),
-    )
-
     try:
-        upstream = await client.send(upstream_request, stream=True)
+        upstream = await client.send(
+            client.build_request(
+                method=request.method,
+                url=client.base_url.copy_with(raw_path=_target(request.scope)),
+                headers=_proxy_headers(request.headers),
+                content=request.stream(),
+            ),
+            stream=True,
+        )
     except RequestError as error:
         done()
         logger.warning("proxy: upstream error: %s", error)
@@ -79,8 +94,10 @@ async def proxy_http(
         raise
 
     async def close() -> None:
-        await upstream.aclose()
-        done()
+        try:
+            await upstream.aclose()
+        finally:
+            done()
 
     # A sandbox destroyed mid-stream (lifetime, crash) ends the body; that is no error.
     async def body() -> AsyncGenerator[bytes]:
@@ -88,66 +105,67 @@ async def proxy_http(
             async for chunk in upstream.aiter_raw():
                 yield chunk
 
-    return StreamingResponse(
+    response = StreamingResponse(
         content=body(),
         status_code=upstream.status_code,
-        headers={
-            key: value for key, value in upstream.headers.items()
-            if key.lower() not in _HOP_BY_HOP
-        },
         background=BackgroundTask(close),
     )
+    # Raw keeps repeated Set-Cookie apart; none may replace the owner's cookie.
+    response.raw_headers = [
+        (key, value) for key, value in upstream.headers.raw
+        if key.decode().lower() not in _NOT_FORWARDED
+        and value.partition(b"=")[0].strip().decode() != SESSION_COOKIE
+    ]
+    response.raw_headers.append((b"content-security-policy", _CSP))
+
+    return response
 
 
 async def proxy_websocket(
     websocket: WebSocket,
-    port: int,
+    client: AsyncClient,
 ) -> None:
 
     try:
-        async with ws_connect(
-            uri=str(websocket.url.replace(
-                scheme="ws", hostname="127.0.0.1", port=port)),
-            additional_headers=_proxy_headers(
-                websocket.headers,
-                _WS_DROP,
-                "https" if websocket.url.scheme == "wss" else "http",
+        async with client.websocket(
+            client.base_url.copy_with(
+                scheme="ws",
+                raw_path=_target(websocket.scope),
             ),
-            max_size=None,
-            open_timeout=10,
+            headers=_proxy_headers(websocket.headers),
+            max_message_size_bytes=_WS_MAX_MESSAGE_BYTES,
+            timeout=10,
         ) as upstream:
             await websocket.accept()
 
             async def to_upstream() -> None:
-                with suppress(WebSocketDisconnect, ConnectionClosed):
+                with suppress(HTTPXWSException):
                     while True:
                         message = await websocket.receive()
                         if message["type"] == "websocket.disconnect":
-                            await upstream.close()
-                            return
-                        payload = message.get("bytes") or message.get("text")
-                        if payload is not None:
-                            await upstream.send(payload)
+                            break
+                        if (text := message.get("text")) is not None:
+                            await upstream.send_text(text)
+                        elif (data := message.get("bytes")) is not None:
+                            await upstream.send_bytes(data)
+                group.cancel_scope.cancel()
 
             async def to_client() -> None:
-                with suppress(WebSocketDisconnect, ConnectionClosed):
-                    async for frame in upstream:
-                        if isinstance(frame, bytes):
-                            await websocket.send_bytes(frame)
-                        else:
-                            await websocket.send_text(frame)
+                with suppress(HTTPXWSException, WebSocketDisconnect):
+                    while True:
+                        event = await upstream.receive()
+                        if isinstance(event, TextMessage):
+                            await websocket.send_text(event.data)
+                        elif isinstance(event, BytesMessage):
+                            await websocket.send_bytes(bytes(event.data))
+                group.cancel_scope.cancel()
 
-            tasks = {create_task(to_upstream()), create_task(to_client())}
-            _, pending = await wait(tasks, return_when=FIRST_COMPLETED)
+            async with create_task_group() as group:
+                group.start_soon(to_upstream)
+                group.start_soon(to_client)
 
-            for task in pending:
-                task.cancel()
-            for task in pending:
-                with suppress(CancelledError):
-                    await task
-
-    except (WebSocketException, WebSocketDisconnect, OSError) as error:
-        logger.warning("proxy: websocket error: %s", error)
+    except (HTTPXWSException, RequestError) as error:
+        logger.warning("proxy: websocket error: %r", error)
     finally:
         if websocket.application_state != WebSocketState.DISCONNECTED:
             with suppress(RuntimeError, WebSocketDisconnect):

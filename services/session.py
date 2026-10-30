@@ -5,7 +5,9 @@ from dataclasses import dataclass, field
 from secrets import token_hex
 from time import monotonic
 
+from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
+from httpx2 import AsyncClient
 
 from config import get_settings
 from services.sandbox import boot_sandbox, remove_leftovers
@@ -21,11 +23,17 @@ class SessionError(Exception):
 
 @dataclass
 class Session:
+    # For logs; holds no secret.
+    name: str
+    # The owner's cookie.
     token: str
+    # One-time; gone once a browser owns the session.
+    link: str | None
     password: str
-    port: int
     # Runs the image command; done once OpenChamber or the sandbox is gone.
     service: Task[None]
+    # Sends proxied requests into the sandbox.
+    client: AsyncClient
     # Holds the slot and the sandbox until closed.
     stack: AsyncExitStack
     # Proxied requests and WebSockets currently open.
@@ -43,23 +51,24 @@ async def open_session() -> Session:
     if _slots.locked():
         raise SessionError("Server at capacity. Try again later.")
 
-    token, password = token_hex(24), token_hex(12)
+    name, password = f"mayfly-{token_hex(6)}", token_hex(12)
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(_slots)
 
         try:
-            port, service = await stack.enter_async_context(
-                boot_sandbox(f"mayfly-{token[:12]}", password))
+            service, client = await stack.enter_async_context(
+                boot_sandbox(name, password))
         except Exception as error:
-            logger.exception("session %s: start failed", token[:12])
+            logger.exception("session %s: start failed", name)
             raise SessionError(
                 "Could not start the sandbox. Try again later.") from error
 
+        token = token_hex(24)
         session = _sessions[token] = Session(
-            token, password, port, service, stack.pop_all())
+            name, token, token_hex(24), password, service, client, stack.pop_all())
 
-    logger.info("session %s: opened on port %d", token[:12], port)
+    logger.info("session %s: opened", name)
     return session
 
 
@@ -70,11 +79,24 @@ def get_session(
     return _sessions.get(token) if token else None
 
 
+def claim_session(
+    link: str,
+) -> Session | None:
+
+    # Nothing suspends in here, so only the first visitor gets it.
+    for session in _sessions.values():
+        if session.link == link:
+            session.link = None
+            return session
+
+    return None
+
+
 def session_url(
-    token: str,
+    session: Session,
 ) -> str:
 
-    return f"{_settings.public_url.rstrip('/')}/s/{token}"
+    return f"{_settings.public_url.rstrip('/')}/s/{session.link}"
 
 
 def connect_session(
@@ -104,9 +126,9 @@ async def close_session(
         try:
             await shield(session.stack.aclose())
         except Exception:
-            logger.exception("session %s: teardown failed", token[:12])
+            logger.exception("session %s: teardown failed", session.name)
         else:
-            logger.info("session %s: closed", token[:12])
+            logger.info("session %s: closed", session.name)
 
 
 async def _reap_sessions() -> None:
@@ -118,12 +140,14 @@ async def _reap_sessions() -> None:
             idle = session.connections == 0 \
                 and now - session.idle_since > _settings.sandbox_idle_timeout
             if idle or session.service.done():
-                logger.info("session %s: %s", token[:12], "idle" if idle else "died")
+                logger.info("session %s: %s", session.name, "idle" if idle else "died")
                 await close_session(token)
 
 
 @asynccontextmanager
-async def session_lifespan() -> AsyncGenerator[None]:
+async def session_lifespan(
+    server: FastMCP,
+) -> AsyncGenerator[None]:
 
     await remove_leftovers()
 

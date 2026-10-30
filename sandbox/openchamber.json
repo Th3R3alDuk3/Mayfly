@@ -1,16 +1,18 @@
 {
   "projects": [{
-    "id": "workspace", 
-    "path": "/home/user/workspace", 
+    "id": "workspace",
+    "path": "/home/user/workspace",
     "label": "Workspace"
   }],
   "activeProjectId": "workspace",
   "lastDirectory": "/home/user/workspace",
   "homeDirectory": "/home/user/workspace",
+  "permissionDefaultMode": "auto",
   "agentWebToolEnabled": false,
   "agentControlToolEnabled": false,
+  "agentScheduleToolEnabled": false,
   "agentMemoryToolEnabled": false,
-  "skillCatalogs": [],
+  "agentKnowledgeToolEnabled": false,
   "dictationEnabled": false,
   "reportUsage": false,
   "showOpenCodeUpdateNotifications": false,
